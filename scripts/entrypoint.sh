@@ -8,7 +8,7 @@
 # that the volume wins, and ratifications and ledger entries survive redeploys.
 set -eu
 
-CASE_NAME="${CASE_NAME:-citywide}"
+CASE_NAME="${CASE_NAME:-santacruz}"
 VOLUME_CASE="/data/cases/${CASE_NAME}"
 
 # Platform volumes (Railway) mount root-owned with no pre-mount chown hook, so the

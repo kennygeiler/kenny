@@ -5,10 +5,10 @@ primary_region = "sjc"
 
 [env]
   PORT = "8080"
-  CASE_NAME = "citywide"
+  CASE_NAME = "santacruz"
   HOLLY_REQUIRE_AUTH = "1"
   HOLLY_CHAT_RATE_LIMIT = "20"
-  HOLLY_BANNER = "Prototype — demonstration only. The contracts in this corpus are synthetic and every figure is illustrative. Not a source of truth for any real pay decision."
+  HOLLY_BANNER = "Prototype — demonstration only. Built on the Central Fire District of Santa Cruz County's published MOUs; every figure is analyst-derived and illustrative. Not a source of truth for any real pay decision."
 
 # The ledger is the product's claim to defensibility; it cannot live on a filesystem
 # that a redeploy resets. Seeded from the image on first boot (scripts/entrypoint.sh).

@@ -1,6 +1,6 @@
 """Bake a case's corpus into the image at BUILD time, so the container starts answering.
 
-Ingesting the 13-document reference corpus takes minutes (docling parses each PDF) and
+Ingesting the corpus takes minutes (docling parses each PDF) and
 downloads model weights on first use. Doing that at container start means the first
 visitor to the shared link waits several minutes, every redeploy repeats it, and a
 platform health check kills the instance before it finishes. So it runs once, here, in
@@ -10,7 +10,7 @@ Deliberately runs with NO api key: ingest only extracts + indexes (rules are aut
 per scenario at runtime and ship in rules_ratified.json as approved), so the build is
 reproducible, spends no money, and bakes no key into a layer.
 
-Usage:  python -m scripts.prepare_deploy cases/citywide
+Usage:  python -m scripts.prepare_deploy cases/santacruz
 """
 from __future__ import annotations
 
@@ -146,4 +146,4 @@ def _goldens_fail(case_rel: str) -> bool:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1] if len(sys.argv) > 1 else "cases/citywide"))
+    raise SystemExit(main(sys.argv[1] if len(sys.argv) > 1 else "cases/santacruz"))

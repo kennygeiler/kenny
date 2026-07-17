@@ -102,9 +102,9 @@ where, so a reader can confirm no figure came from a model.
 
 ```
 subject (classification):
-  { "classification": "Sergeant Step C (Graveyard)",
-    "bargaining_unit": "sandcity-police", "base_hourly": 58,
-    "shift": "Graveyard", "bilingual": false, "post_cert": "Advanced" }
+  { "classification": "Firefighter/Paramedic (56 hr, top step)",
+    "bargaining_unit": "firefighters-local-3535", "department": "fire",
+    "rank": "Firefighter/Paramedic", "base_hourly": 53.40, "shift": "56-hour" }
 ```
 
 The table that feeds this is `class × step × shift × certs × rate` — a position table HR already

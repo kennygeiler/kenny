@@ -1,7 +1,0 @@
-name,rank,base_hourly,shift,fto,bilingual,post_cert,bargaining_unit
-"Officer Step C (Graveyard, Bilingual FTO)",Officer,48.00,Graveyard,Yes,Yes,Advanced,sandcity-police
-Officer Step C (Day),Officer,48.00,Day,No,No,Intermediate,sandcity-police
-Sergeant Step C (Graveyard),Sergeant,58.00,Graveyard,No,No,Advanced,sandcity-police
-"Officer Step B (Swing, Bilingual)",Officer,45.00,Swing,No,Yes,None,sandcity-police
-Officer Step B (Graveyard),Officer,45.00,Graveyard,No,No,Intermediate,sandcity-police
-"Corporal Step C (Graveyard, Bilingual FTO)",Corporal,52.00,Graveyard,Yes,Yes,Advanced,sandcity-police

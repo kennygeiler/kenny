@@ -51,7 +51,7 @@ of as a wrong answer discovered months later.
 
 ## Operating it
 
-- **Ledger backup:** `fly ssh console -C "cat /data/cases/citywide/ledger.jsonl" > ledger.bak`.
+- **Ledger backup:** `fly ssh console -C "cat /data/cases/santacruz/ledger.jsonl" > ledger.bak`.
   The volume is a single disk with no replication — treat it as losable.
 - **Rule changes are on the volume, not in git.** Ratifying through the hosted admin panel
   writes `/data/.../rules_ratified.json`, which the repo never sees. Pull it back if you

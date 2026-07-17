@@ -1,5 +1,5 @@
 """Verbose data-flow trace: shows exactly what happens at each stage of INGESTION
-and CHAT for a case. Run:  python scripts/trace.py cases/overtime  (or cases/sheriff)
+and CHAT for the Santa Cruz case. Run:  python scripts/trace.py
 """
 import json
 import os
@@ -12,12 +12,10 @@ from core.caseio import load_case
 from core.catalog import Catalog
 from core.engine import calculate
 
-CASE_DIR = sys.argv[1] if len(sys.argv) > 1 else "cases/overtime"
+CASE_DIR = sys.argv[1] if len(sys.argv) > 1 else "cases/santacruz"
 PROMPTS = {
-    "cases/overtime": "Calculate the total cost of mandating an 8-hour shift for "
-                      "the road tech classifications on July 4th (a Saturday).",
-    "cases/sheriff": "Calculate the total cost of a 6-hour mandatory holdover for "
-                     "the detention and patrol classifications on a High-Security Day.",
+    "cases/santacruz": "Cost an 8-hour overtime shift for a Firefighter/Paramedic "
+                       "(56 hr, top step).",
 }
 
 
@@ -31,7 +29,7 @@ def head(n, t):
 
 def main():
     case = load_case(CASE_DIR)
-    prompt = PROMPTS.get(CASE_DIR.rstrip("/"), PROMPTS["cases/overtime"])
+    prompt = PROMPTS.get(CASE_DIR.rstrip("/"), PROMPTS["cases/santacruz"])
     print(f"CASE: {case.manifest['name']}   (LLM: {'Claude' if llm.have_key() else 'stub'})")
 
     # ================= INGESTION =================

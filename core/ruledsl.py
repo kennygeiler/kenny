@@ -88,7 +88,7 @@ class Rule:
     id: str
     kind: str  # "modifier" | "selector"
     # What the computed value MEANS. Drives which rules answer which question and how
-    # the answer is rendered ($1,660.00 vs "5 days"). Pay is not the only rule type.
+    # the answer is rendered ($640.80 vs "3 shifts"). Pay is not the only rule type.
     result_type: str = "currency"
     # ROLE in the pay stack (PRD §7a). Compensation is COMPOSITIONAL, not winner-take-all:
     #   base         — the pay formula. Mutually exclusive: exactly ONE wins per subject.

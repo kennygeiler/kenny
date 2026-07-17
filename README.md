@@ -9,10 +9,14 @@ questions; it never computes the number.
 > Trust is verified once, up front, against ground truth. Every scenario computed on
 > those verified rules is then instant *and* defensible.
 
+This build ships a single corpus — the **Central Fire District of Santa Cruz County**:
+four bargaining-unit MOUs (with side letters) plus the master salary schedule, all
+published by the district.
+
 **Go deeper:** [`PRD.md`](PRD.md) ([PDF](PRD.pdf)) — the product, users, scope, and trust
 model, for a product audience. · [`ARCHITECTURE.md`](ARCHITECTURE.md)
 ([PDF](ARCHITECTURE.pdf)) — component map, data contracts, flows, security, and the
-onboarding playbook. · [`DEPLOY.md`](DEPLOY.md) — putting it behind a shared URL. ·
+onboarding playbook. · [`DEPLOY.md`](DEPLOY.md) — putting it behind a shared URL.
 
 The PRD owns *intent*; ARCHITECTURE owns *behaviour*. Where they overlap, ARCHITECTURE is
 the tiebreak.
@@ -43,8 +47,7 @@ Four rules, enforced in the architecture rather than promised in prose:
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt          # docling is heavy; see "offline" below
-python scripts/make_reference_pdfs.py    # generate reference PDFs + clause sidecars
-pytest                                    # proves the reference case 
+pytest                                    # proves the Santa Cruz case = $640.80
 uvicorn core.app:app --reload            # http://127.0.0.1:8000 (chat) · /admin (ops)
 ```
 
@@ -71,7 +74,7 @@ Open `/admin`. The tabs are numbered in the order you use them.
 
 | Tab | What it does | What to expect |
 |---|---|---|
-| **1 · Documents** | Ingest the contract PDFs. Each is parsed by docling for its text, its tables, and the **exact position of every clause**, then tagged and summarized into a searchable catalog. | Both source PDFs appear in the contract library, searchable immediately. No rules exist yet. |
+| **1 · Documents** | Ingest the contract PDFs. Each is parsed by docling for its text, its tables, and the **exact position of every clause**, then tagged and summarized into a searchable catalog. | The five source documents (four MOUs + the master salary schedule) appear in the contract library, searchable immediately. No rules exist yet. |
 | **2 · Verification** | The trust anchor. Pick a known-correct scenario and press **"Draft the rules for this scenario."** The system retrieves only the clauses that answer needs and drafts the few rules they require — then checks them against the known amount. | A short set of candidate rules (≈4, not the ~33 you'd get extracting a whole MOU) with a pass/fail against the known number. Scoping extraction to one verified scenario is deliberate — it keeps review humanly reviewable. |
 | **3 · Review queue** | The human gate. Each drafted rule is shown beside its highlighted source clause, waiting for approval. Nothing here affects an answer yet. | You approve each rule against the clause it came from. Approval is **blocked** until the approved set reproduces the verification amount — a misdrafted rule cannot go live. |
 | **Rule library** | The ratified rules currently in force, plus gaps (scenarios the classification table can't yet answer, and which data dimension would unlock them). | The approved rules become the live library the engine computes from. |
@@ -86,35 +89,35 @@ what the engine will compute."
 Open `/`. Ask in plain language. The badge (top-right) shows whether Claude is active.
 Chat handles four kinds of question:
 
-- **Costing** — *"Calculate the total cost of mandating an 8-hour shift for the road tech
-  classifications on July 4th (a Saturday)."*
+- **Costing** — *"Cost an 8-hour overtime shift for a Firefighter/Paramedic (56 hr, top
+  step)."*
 - **Entitlement** — *"How much bereavement leave does a firefighter get?"*
 - **Rate lookup** — the hourly/loaded rate for a classification and step.
-- **Policy Q&A** — *"What does the MOU say about overtime?"*
+- **Policy Q&A** — *"What does the Firefighters Local 3535 MOU say about overtime?"*
 
 **What to expect from a costing answer:**
 
-1. A **single deterministic figure** 
-2. The answer is **routed to the right document**
+1. A **single deterministic figure** — e.g. **$640.80** for the overtime shift above
+   (1.5× the $53.40/hr top-step rate × 8 hours).
+2. The answer is **routed to the right document** — the multiplier comes from the Local
+   3535 MOU, the rate from the Master Salary Schedule — and any ambiguity is flagged.
 3. **Click any dollar amount** → the audit drawer opens, showing the full decision trace
    and the **source clause boxed on the rendered PDF page**. This is the "number I can
    defend" made literal.
 
+### Expected results
 
----
+The engine is **config-not-code** — `core/` is case-agnostic; the corpus is a swappable
+data bundle. The Santa Cruz goldens ship as verified acceptance tests (`pytest`):
 
-## Onboard a new policy domain (no code)
+| Scenario | Prompt | Expected result | Source |
+|---|---|---|---|
+| Overtime (money) | 8-hour overtime shift, Firefighter/Paramedic (56 hr, top step) | **$640.80** | Local 3535 MOU p.8 (1.5×) × Master Salary Schedule ($53.40/hr). |
+| Bereavement (entitlement) | Bereavement leave for a Firefighter/Paramedic | **3 shifts** | Local 3535 MOU Article XIV (p.21). |
 
-```bash
-python scripts/new_case.py my_domain
-# drop a PDF in cases/my_domain/sources, fill case.yaml + data + extraction.yaml,
-# then draft/approve rules via the admin panel
-CASE=cases/my_domain uvicorn core.app:app
-```
-
-Nothing in `core/` changes. A new domain is a new data bundle plus a trip through the
-Admin flow above. See ARCHITECTURE §12 (onboarding playbook) before pointing this at a
-real corpus.
+Other bargaining units (Admin Group, Management, Chief Officers) are declared in the
+corpus with their own known-answer scenarios; their rules are drafted through the Admin
+flow above and read as *pending* until then.
 
 ---
 
@@ -125,10 +128,10 @@ real corpus.
 - **`cases/<name>/`** — a swappable bundle: PDFs, data, rules, taxonomy, prompts.
 
 ```
-core/            engine, surfaces, ledger (never changes per case)
-cases/<name>/    sources/ · data/ · rules/ · taxonomy.yaml · prompt/ · case.yaml
-scripts/         PDF generation, new-case scaffold, deploy helpers
-tests/           per-case proofs (overtime = $1,660, sheriff = $1,940.56, …)
+core/            engine, surfaces, ledger (case-agnostic)
+cases/santacruz/ sources/ · data/ · rules/ · taxonomy.yaml · prompt/ · case.yaml
+scripts/         deploy helpers, corpus reset, doc/PDF generation, trace
+tests/           acceptance proofs (Santa Cruz overtime = $640.80, bereavement = 3 shifts)
 ```
 
 Read ARCHITECTURE §2 (the law), §11 (pitfalls), and §12 (playbook) before running against

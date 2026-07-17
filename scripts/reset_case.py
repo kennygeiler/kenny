@@ -11,12 +11,12 @@ ingested and rules are reviewed and ratified by a person.
 Two shapes of blind, differing only in whether the upload path is exercised:
 
   --keep-sources   the PDFs stay in sources/ — a customer drops a bundle and presses
-                   Ingest. One click for a 13-document corpus.
+                   Ingest. One click for the whole corpus.
   (default)        the PDFs are staged to a folder for re-upload through the admin panel.
                    Slower, but it tests the path a real user takes on day one.
 
-Usage:  python -m scripts.reset_case cases/citywide                 # stage PDFs out
-        python -m scripts.reset_case cases/citywide --keep-sources  # leave them for Ingest
+Usage:  python -m scripts.reset_case cases/santacruz                 # stage PDFs out
+        python -m scripts.reset_case cases/santacruz --keep-sources  # leave them for Ingest
 """
 from __future__ import annotations
 
@@ -108,6 +108,6 @@ def main(case_rel: str, stage_dir: str, keep_sources: bool = False) -> int:
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     keep = "--keep-sources" in sys.argv
-    case = args[0] if args else "cases/citywide"
+    case = args[0] if args else "cases/santacruz"
     stage = args[1] if len(args) > 1 else "~/Holly_Test_Documents"
     raise SystemExit(main(case, stage, keep_sources=keep))

@@ -175,11 +175,14 @@ def load_case(case_dir: str) -> CaseContext:
 
 
 def default_case_dir() -> str:
-    """The active case: env CASE (resolved against repo root if relative), else
-    cases/overtime. Resolving against the repo root — not the process cwd — means the
-    app works regardless of where uvicorn is launched from."""
+    """The active case is always Santa Cruz — the only corpus this build ships.
+
+    env CASE may still relocate WHERE that case lives (the deploy seeds an ingested
+    copy onto a persistent volume and points CASE at its absolute path, so the ledger
+    survives redeploys). Resolving against the repo root — not the process cwd — means
+    the app works regardless of where uvicorn is launched from."""
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = os.environ.get("CASE")
     if env:
         return env if os.path.isabs(env) else os.path.join(repo_root, env)
-    return os.path.join(repo_root, "cases", "overtime")
+    return os.path.join(repo_root, "cases", "santacruz")

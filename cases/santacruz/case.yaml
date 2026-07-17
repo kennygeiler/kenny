@@ -96,3 +96,25 @@ golden_cases:
     subjects: ["Firefighter/Paramedic (56 hr, top step)"]
     params: {hours: 0}
     expected_total: 3
+
+  # Chief Officers MOU (p.14): "the employee shall be granted, 40 hours of paid
+  # bereavement leave." A different unit's contract, a different quantity — proves
+  # governance routes each classification to ITS document.
+  - name: bereavement leave, Chief Officers Association (p.14)
+    source: "analyst-derived: '40 hours of paid bereavement leave', Chief Officers MOU p.14"
+    branch_query: "bereavement leave death immediate family hours"
+    result_type: hours
+    subjects: ["Battalion Chief (56 hr top step)"]
+    params: {hours: 0}
+    expected_total: 40
+
+  # Admin Group MOU (p.6): "compensated at the rate of one and one-half times their
+  # regular rate of pay for all hours worked in excess of [40]." Rate from the Master
+  # Salary Schedule: Administrative Analyst top step = $59.68/hr.
+  #   59.68 x 1.5 x 8h = 716.16
+  - name: 8-hour overtime shift, Administrative Analyst top step (1.5x per Admin Group MOU)
+    source: "analyst-derived: 1.5x from Admin Group MOU p.6; $59.68/hr from the Master Salary Schedule"
+    branch_query: "overtime rate one and one half times regular rate hours in excess"
+    subjects: ["Administrative Analyst (top step)"]
+    params: {hours: 8}
+    expected_total: 716.16
