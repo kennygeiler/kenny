@@ -1,0 +1,39 @@
+name: Sheriff Holdover & Premium Costing (Article 12)
+department: sheriff
+
+sources:
+  - id: article12_holdover
+    file: sources/article12_holdover.pdf
+    title: Sheriff MOU — Article 12 (Holdover & Premiums)
+    doc_type: MOU
+    bargaining_unit: correctional-officers
+    mou_version: SHERIFF-2025
+    effective_start: "2025-01-01"
+    effective_end: "2028-12-31"
+  - id: uniform_allowance
+    file: sources/uniform_allowance.pdf
+    title: Sheriff Uniform Allowance Policy FY26
+    doc_type: policy
+
+data:
+  adapter: csv
+  path: data/roster.csv
+  schema:
+    name: str
+    unit: str
+    base_hourly: float
+    shift: str
+    hazmat: bool
+    bargaining_unit: str
+
+rules: rules/rules_ratified.json
+proposed_rules: rules/rules_proposed.json
+catalog: catalog.json
+taxonomy: taxonomy.yaml
+extraction: prompt/extraction.yaml
+ledger: ledger.jsonl
+snapshots: snapshots
+
+rounding:
+  places: 2
+  mode: half_up

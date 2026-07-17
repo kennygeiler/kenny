@@ -1,0 +1,18 @@
+department:
+  - sheriff
+  - public-works
+  - fire
+  - general-services
+topic:
+  - holdover
+  - overtime
+  - shift-differential
+  - hazard-premium
+  - uniform-allowance
+  - leave
+  - benefits
+doc-type:
+  - MOU
+  - policy
+  - salary-schedule
+  - amendment

@@ -1,0 +1,6 @@
+.env
+.venv
+snapshots/
+*.bak
+holly_backup_*/
+__pycache__/

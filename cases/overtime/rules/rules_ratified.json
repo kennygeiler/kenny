@@ -1,0 +1,178 @@
+{
+  "rules": [
+    {
+      "id": "art9_1",
+      "kind": "selector",
+      "priority": 10,
+      "when": "True",
+      "compute": "effective_base * 2.5 * hours",
+      "human_readable": "Base + 1.5x holiday premium (2.5x) for hours worked.",
+      "citation": {
+        "doc_id": "mou_article9",
+        "clause": "9.1",
+        "page": 1,
+        "bbox": [
+          60,
+          690,
+          552,
+          620
+        ],
+        "char_span": [
+          0,
+          232
+        ]
+      },
+      "status": "ratified",
+      "approver": "hr-analyst",
+      "approved_at": "2026-07-15T23:01:50Z"
+    },
+    {
+      "id": "art9_2",
+      "kind": "selector",
+      "priority": 20,
+      "when": "holiday_weekday in subject_schedule_days",
+      "compute": "effective_base * hours + 150",
+      "human_readable": "Weekend-shift exception: flat $150, no 1.5x.",
+      "flags": [
+        {
+          "when": "True",
+          "message": "\u00a79.2 silent on straight-time base for hours worked; confirm.",
+          "alternate": "150"
+        }
+      ],
+      "citation": {
+        "doc_id": "mou_article9",
+        "clause": "9.2",
+        "page": 1,
+        "bbox": [
+          60,
+          590,
+          552,
+          500
+        ],
+        "char_span": [
+          0,
+          279
+        ]
+      },
+      "status": "ratified",
+      "approver": "hr-analyst",
+      "approved_at": "2026-07-15T23:01:50Z"
+    },
+    {
+      "id": "art9_3",
+      "kind": "modifier",
+      "priority": 100,
+      "when": "subject_bilingual == True",
+      "set": {
+        "effective_base": "subject_base_hourly * 1.05"
+      },
+      "human_readable": "Bilingual +5% applied before the multiplier.",
+      "citation": {
+        "doc_id": "mou_article9",
+        "clause": "9.3",
+        "page": 1,
+        "bbox": [
+          60,
+          470,
+          552,
+          410
+        ],
+        "char_span": [
+          0,
+          220
+        ]
+      },
+      "status": "ratified",
+      "approver": "hr-analyst",
+      "approved_at": "2026-07-15T23:01:50Z"
+    },
+    {
+      "id": "art9_1",
+      "kind": "selector",
+      "priority": 10,
+      "when": "True",
+      "compute": "effective_base * 2.5 * hours",
+      "human_readable": "Base + 1.5x holiday premium (2.5x) for hours worked.",
+      "citation": {
+        "doc_id": "seiu_mou_article9",
+        "clause": "9.1",
+        "page": 1,
+        "bbox": [
+          78.0,
+          670.898,
+          528.5819999999999,
+          628.723
+        ],
+        "char_span": [
+          0,
+          232
+        ]
+      },
+      "status": "ratified",
+      "approver": "hr-analyst",
+      "approved_at": "2026-07-15T23:01:50Z"
+    },
+    {
+      "id": "art9_2",
+      "kind": "selector",
+      "priority": 20,
+      "when": "holiday_weekday in subject_schedule_days",
+      "compute": "effective_base * hours + 150",
+      "human_readable": "Weekend-shift exception: flat $150, no 1.5x.",
+      "flags": [
+        {
+          "when": "True",
+          "message": "\u00a79.2 silent on straight-time base for hours worked; confirm.",
+          "alternate": "150"
+        }
+      ],
+      "citation": {
+        "doc_id": "seiu_mou_article9",
+        "clause": "9.2",
+        "page": 1,
+        "bbox": [
+          78.0,
+          608.898,
+          524.9519999999999,
+          550.723
+        ],
+        "char_span": [
+          0,
+          279
+        ]
+      },
+      "status": "ratified",
+      "approver": "hr-analyst",
+      "approved_at": "2026-07-15T23:01:50Z"
+    },
+    {
+      "id": "art9_3",
+      "kind": "modifier",
+      "priority": 100,
+      "when": "subject_bilingual == True",
+      "set": {
+        "effective_base": "subject_base_hourly * 1.05"
+      },
+      "human_readable": "Bilingual +5% applied before the multiplier.",
+      "citation": {
+        "doc_id": "seiu_mou_article9",
+        "clause": "9.3",
+        "page": 1,
+        "bbox": [
+          78.0,
+          530.898,
+          531.002,
+          488.723
+        ],
+        "char_span": [
+          0,
+          220
+        ]
+      },
+      "status": "ratified",
+      "approver": "hr-analyst",
+      "approved_at": "2026-07-15T23:01:50Z"
+    }
+  ]
+}

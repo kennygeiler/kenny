@@ -1,0 +1,22 @@
+classification,department,rank,base_hourly,shift,bargaining_unit
+"Firefighter (56 hr, top step)",fire,Firefighter,48.54,Suppression,firefighters-local-3535
+"Firefighter/Paramedic (56 hr, top step)",fire,Firefighter/Paramedic,53.40,Suppression,firefighters-local-3535
+"Firefighter/Paramedic (56 hr, entry step)",fire,Firefighter/Paramedic,39.72,Suppression,firefighters-local-3535
+Fire Captain (56 hr top step),fire,Fire Captain,61.01,Suppression,firefighters-local-3535
+Fire Captain (40 hr top step),fire,Fire Captain,89.94,Day,firefighters-local-3535
+Fire Engineer proxy — Fire Apparatus Technician (top),fire,Fire Apparatus Technician,58.57,Day,firefighters-local-3535
+Battalion Chief (56 hr top step),fire,Battalion Chief,75.34,Suppression,chief-officers
+Battalion Chief (40 hr top step),fire,Battalion Chief,105.76,Day,chief-officers
+Division Chief (top step),fire,Division Chief,137.09,Day,chief-officers
+Fire Marshal (top step),fire,Fire Marshal,108.59,Day,management
+Administrative Analyst (top step),admin,Administrative Analyst,59.68,Day,admin-group
+Administrative Assistant (top step),admin,Administrative Assistant,44.64,Day,admin-group
+Fire Inspector (top step),admin,Fire Inspector,69.66,Day,admin-group
+Police Officer Step A,police,Police Officer,45.25,Patrol,unrepresented-sample
+Police Officer Step B,police,Police Officer,48.45,Patrol,unrepresented-sample
+Police Officer Step D,police,Police Officer,50.61,Patrol,unrepresented-sample
+Police Officer Step E,police,Police Officer,57.77,Patrol,unrepresented-sample
+Police Officer (Probation),police,Police Officer,42.87,Patrol,unrepresented-sample
+Sergeant Step B,police,Police Sergeant,61.91,Patrol,unrepresented-sample
+Sergeant Step C,police,Police Sergeant,60.65,Patrol,unrepresented-sample
+Sergeant Step D,police,Police Sergeant,59.45,Patrol,unrepresented-sample

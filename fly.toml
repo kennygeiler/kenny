@@ -1,0 +1,39 @@
+app = "holly-demo-kg-0717"
+primary_region = "sjc"
+
+[build]
+
+[env]
+  PORT = "8080"
+  CASE_NAME = "citywide"
+  HOLLY_REQUIRE_AUTH = "1"
+  HOLLY_CHAT_RATE_LIMIT = "20"
+  HOLLY_BANNER = "Prototype — demonstration only. The contracts in this corpus are synthetic and every figure is illustrative. Not a source of truth for any real pay decision."
+
+# The ledger is the product's claim to defensibility; it cannot live on a filesystem
+# that a redeploy resets. Seeded from the image on first boot (scripts/entrypoint.sh).
+[mounts]
+  source = "holly_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  # A hard floor of 1. Not for latency: the ledger's file lock and the in-process ingest
+  # job registry assume a single writer, so a second machine would fork the audit trail
+  # into two chains that can never be reconciled.
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/healthz"
+
+# torch + docling + MiniLM resident. 512MB OOM-kills on the first docling parse.
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"

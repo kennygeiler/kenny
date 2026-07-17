@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Holly — ask a question about your contracts</title>
+  <link rel="stylesheet" href="/static/styles.css?v=4">
+</head>
+<body>
+  <a class="skip-link" href="#prompt">Skip to the question box</a>
+
+  <header>
+    <h1>Holly</h1>
+    <p class="hdr-tag" id="caseName">Ask a question about your contracts</p>
+    <span class="badge" id="keyBadge"></span>
+    <nav aria-label="Sections">
+      <a href="/" aria-current="page">Chat</a>
+      <a href="/admin">Admin</a>
+    </nav>
+  </header>
+
+  <p class="demo-banner" id="demoBanner" role="note" hidden></p>
+
+  <div class="wrap">
+    <main id="log" role="log" aria-live="polite" aria-label="Conversation">
+      <div class="msg bot">
+        <p style="margin:0 0 8px">Ask about pay, leave, deadlines or what a contract says. Every
+          answer shows the clause it came from — click it to read that clause on the page.</p>
+        <p class="muted" style="margin:0">For example:</p>
+        <ul class="muted" style="margin:4px 0 0; padding-left:18px">
+          <li>Cost an 8-hour overtime shift for a Firefighter/Paramedic (56 hr, top step)</li>
+          <li>How much bereavement leave does a firefighter get?</li>
+          <li>What does the Firefighters Local 3535 MOU say about overtime?</li>
+        </ul>
+      </div>
+    </main>
+  </div>
+
+  <div id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" hidden>
+    <div class="dh">
+      <strong id="drawerTitle">How this answer was reached</strong>
+      <button type="button" class="ghost" onclick="closeDrawer()">Close</button>
+    </div>
+    <div class="db" id="drawerBody"></div>
+  </div>
+
+  <div id="bar">
+    <form class="inner" id="askForm" onsubmit="event.preventDefault(); send();">
+      <label class="skip-link" for="prompt">Your question</label>
+      <input id="prompt" name="prompt" autocomplete="off"
+             placeholder="Ask about pay, leave, a deadline, or what the contract says…"
+             value="Cost an 8-hour overtime shift for a Firefighter/Paramedic (56 hr, top step)">
+      <button type="submit">Ask</button>
+    </form>
+  </div>
+
+  <script src="/static/app.js?v=4"></script>
+</body>
+</html>

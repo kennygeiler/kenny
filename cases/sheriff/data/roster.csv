@@ -1,0 +1,5 @@
+name,unit,base_hourly,shift,hazmat,bargaining_unit
+"Detention Officer (Day, Hazmat)",Detention,40.00,Day,Yes,correctional-officers
+Detention Officer Step C (Graveyard),Detention,45.00,Graveyard,No,correctional-officers
+Detention Officer (Day),Detention,40.00,Day,No,correctional-officers
+"Patrol Deputy (Graveyard, Hazmat)",Patrol,42.00,Graveyard,Yes,correctional-officers

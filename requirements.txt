@@ -1,0 +1,23 @@
+# Core runtime
+fastapi
+uvicorn
+simpleeval
+pyyaml
+pandas
+python-multipart
+
+# Document ingestion & rendering
+docling            # heavy (pulls torch + models); ingestion has an offline fallback
+pypdfium2
+pillow
+reportlab
+
+# Retrieval / search (large-doc + policy Q&A)
+sentence-transformers   # local embeddings for hybrid retrieval; BM25 fallback if absent
+opensearch-py           # production hybrid backend adapter (needs a running cluster)
+
+# LLM (optional at run time; graceful fallback when ANTHROPIC_API_KEY is unset)
+anthropic
+
+# Tests
+pytest

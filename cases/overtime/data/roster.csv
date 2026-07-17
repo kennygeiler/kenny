@@ -1,0 +1,4 @@
+name,title,base_hourly,schedule_days,bilingual,bargaining_unit
+"Road Tech I (Day, Bilingual)",Road Tech I,30.00,"Mon,Tue,Wed,Thu,Fri",Yes,public-works-maintenance
+Road Tech II (Weekend Schedule),Road Tech II,35.00,"Wed,Thu,Fri,Sat,Sun",No,public-works-maintenance
+Road Tech I (Day),Road Tech I,30.00,"Mon,Tue,Wed,Thu,Fri",No,public-works-maintenance

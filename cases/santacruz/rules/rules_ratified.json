@@ -1,0 +1,54 @@
+{
+  "rules": [
+    {
+      "id": "firefighters_local3535_mou:bereavement_shifts",
+      "kind": "selector",
+      "role": "base",
+      "result_type": "days",
+      "topic": "bereavement",
+      "when": "True",
+      "compute": "3",
+      "human_readable": "Three (3) shifts of paid bereavement leave upon a death in the employee's immediate family (Local 3535 MOU, Article XIV, p.21). Authored by the reviewing analyst against the clause text.",
+      "citation": {
+        "doc_id": "firefighters_local3535_mou",
+        "clause": "XIV",
+        "page": 21,
+        "bbox": [
+          107.28,
+          189.498,
+          505.259,
+          167.118
+        ]
+      },
+      "status": "ratified",
+      "_scenario": "bereavement leave, Firefighters Local 3535 (Article XIV)",
+      "approver": "kenny",
+      "approved_at": "2026-07-17T22:22:54Z"
+    },
+    {
+      "id": "firefighters_local3535_mou:overtime_premium_rate",
+      "kind": "selector",
+      "role": "base",
+      "result_type": "currency",
+      "pay_basis": "hourly",
+      "topic": "overtime",
+      "when": "hours > 0",
+      "compute": "effective_base * 1.5 * hours",
+      "human_readable": "Premium overtime compensation at one and one half (1.5x) the employee's regular rate of pay (Local 3535 MOU, Overtime Rate, p.8). Reviewed and approved by the analyst against the clause text; the drafted FLSA 182/192-hour cycle rules were deliberately not approved \u2014 they model the 24-day work period, a different pay branch than a premium overtime shift.",
+      "citation": {
+        "doc_id": "firefighters_local3535_mou",
+        "clause": "Overtime Rate (p.8)",
+        "page": 8,
+        "bbox": [
+          141.418,
+          505.662,
+          511.182,
+          441.459
+        ]
+      },
+      "status": "ratified",
+      "approver": "kenny",
+      "approved_at": "2026-07-17T22:22:54Z"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+name: Central Fire District of Santa Cruz County — Labor Corpus
+department: district
+
+# REAL documents, published by the district at centralfiresc.org/2161/Salaries-Benefits.
+# Four MOUs (all arrived as scans — OCR'd to a text layer before ingest) plus the master
+# salary schedule. Governance dates below are declared from each document's own title;
+# confirming them against the signature pages is a human onboarding step (PRD §11.1).
+sources:
+  - id: firefighters_local3535_mou
+    file: sources/firefighters_local3535_mou.pdf
+    title: Firefighters Local 3535 MOU 2025–2028 (with Salary Schedule)
+    doc_type: MOU
+    bargaining_unit: firefighters-local-3535
+    department: fire
+    mou_version: L3535-2025
+    effective_start: "2025-07-01"
+    effective_end: "2028-06-30"
+  - id: admin_group_mou
+    file: sources/admin_group_mou.pdf
+    title: Admin Group MOU 2024–2026 (with three Side Letters)
+    doc_type: MOU
+    bargaining_unit: admin-group
+    department: admin
+    mou_version: ADMIN-2024
+    effective_start: "2024-07-01"
+    effective_end: "2026-06-30"
+  - id: management_mou
+    file: sources/management_mou.pdf
+    title: Management MOU 2024–2026 (with Side Letter)
+    doc_type: MOU
+    bargaining_unit: management
+    department: management
+    mou_version: MGMT-2024
+    effective_start: "2024-07-01"
+    effective_end: "2026-06-30"
+  - id: chief_officers_mou
+    file: sources/chief_officers_mou.pdf
+    title: Chief Officers Association MOU 2026–2028
+    doc_type: MOU
+    bargaining_unit: chief-officers
+    department: fire
+    mou_version: COA-2026
+    effective_start: "2026-07-01"
+    effective_end: "2028-06-30"
+  - id: master_salary_schedule
+    file: sources/master_salary_schedule.pdf
+    title: Master Salary Schedule (approved 2026-05-14)
+    doc_type: salary-schedule
+    department: district
+
+data:
+  adapter: csv
+  path: data/roster.csv
+  schema:
+    classification: str
+    department: str
+    rank: str
+    base_hourly: float
+    shift: str
+    bargaining_unit: str
+
+rules: rules/rules_ratified.json
+proposed_rules: rules/rules_proposed.json
+catalog: catalog.json
+taxonomy: taxonomy.yaml
+extraction: prompt/extraction.yaml
+ledger: ledger.jsonl
+snapshots: snapshots
+
+rounding:
+  places: 2
+  mode: half_up
+
+# VERIFICATION SCENARIOS — analyst-derived known answers (PRD §7's explicit fallback
+# when no real paystub is available yet). Each expected value is hand-computed from the
+# REAL documents and cites where it came from; replacing these with actual payroll
+# amounts is the first onboarding step with the district.
+golden_cases:
+  # Local 3535 MOU p.8: "premium overtime compensation at the rate of one and one half
+  # (1.5) times the employee's regular rate of pay." Rate from the Master Salary
+  # Schedule: Firefighter/Paramedic 56-hr top step = $53.40/hr.
+  #   53.40 x 1.5 x 8h = 640.80
+  - name: 8-hour overtime shift, Firefighter/Paramedic top step (1.5x per Local 3535 MOU)
+    source: "analyst-derived: 1.5x multiplier from Local 3535 MOU p.8; $53.40/hr from the Master Salary Schedule"
+    branch_query: "overtime rate one and one half times regular rate of pay premium compensation"
+    subjects: ["Firefighter/Paramedic (56 hr, top step)"]
+    params: {hours: 8}
+    expected_total: 640.80
+
+  # Local 3535 MOU Article XIV (p.21): "the employee shall be granted three (3) shifts
+  # paid bereavement leave." A non-money entitlement, verified with the same rigour.
+  - name: bereavement leave, Firefighters Local 3535 (Article XIV)
+    source: "analyst-derived: 'three (3) shifts paid bereavement leave', Local 3535 MOU Article XIV p.21"
+    branch_query: "bereavement leave death immediate family shifts"
+    result_type: days
+    subjects: ["Firefighter/Paramedic (56 hr, top step)"]
+    params: {hours: 0}
+    expected_total: 3

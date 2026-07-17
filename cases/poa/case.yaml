@@ -1,0 +1,32 @@
+name: POA Shift Differential & Premium Costing (Article 12)
+department: police
+
+sources:
+  - id: poa_article12
+    file: sources/poa_article12.pdf
+    title: POA MOU — Article 12 (Shift Differentials & Premiums)
+    doc_type: MOU
+    bargaining_unit: police-poa
+    mou_version: POA-2024
+    effective_start: "2024-01-01"
+    effective_end: "2027-12-31"
+
+data:
+  adapter: csv
+  path: data/roster.csv
+  schema:
+    name: str
+    rank: str
+    base_hourly: float
+    shift: str
+    fto: bool
+    bargaining_unit: str
+
+rules: rules/rules_ratified.json
+catalog: catalog.json
+ledger: ledger.jsonl
+snapshots: snapshots
+
+rounding:
+  places: 2
+  mode: half_up

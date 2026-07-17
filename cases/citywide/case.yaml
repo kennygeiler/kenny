@@ -1,0 +1,205 @@
+name: City of Sand City — Citywide MOU Corpus
+department: citywide
+
+# 13 documents across 5 bargaining units. Retrieval must identify candidates from this
+# metadata + the ingested summary — not from "the only PDF in the folder".
+# Deliberate traps: every unit has holiday/overtime clauses (keyword alone is ambiguous);
+# the SEIU MOU exists in two versions (only effective dates disambiguate); salary
+# schedules talk about pay but contain no rules.
+sources:
+  # ---------------- POLICE ----------------
+  - id: sandcity_poa_mou
+    file: sources/sandcity_poa_mou.pdf
+    title: Police (POA) MOU 2024–2027
+    doc_type: MOU
+    bargaining_unit: sandcity-police
+    department: police
+    mou_version: SANDCITY-POA-2024
+    effective_start: "2024-07-01"
+    effective_end: "2027-06-30"
+  - id: poa_side_letter_2025
+    file: sources/poa_side_letter_2025.pdf
+    title: POA Side Letter 2025-01 (graveyard differential 5.5% → 6.5%)
+    doc_type: amendment
+    bargaining_unit: sandcity-police
+    department: police
+    mou_version: SANDCITY-POA-2024-SL1
+    effective_start: "2025-07-01"
+    effective_end: "2027-06-30"
+    # Replaces §6.1 of the base MOU (graveyard 5.5% -> 6.5%). Without this the base
+    # rule AND this rule would both load and stack. See governance.apply_supersession.
+    supersedes:
+      doc_id: sandcity_poa_mou
+      clauses: ["6.1"]
+  - id: police_salary_schedule
+    file: sources/police_salary_schedule.pdf
+    title: Police Salary Schedule FY26
+    doc_type: salary-schedule
+    bargaining_unit: sandcity-police
+    department: police
+
+  # ---------------- PUBLIC WORKS ----------------
+  - id: seiu_mou_2024
+    file: sources/seiu_mou_2024.pdf
+    title: Public Works (SEIU) MOU 2024–2027 — Article 9 Overtime & Holidays
+    doc_type: MOU
+    bargaining_unit: public-works-maintenance
+    department: public-works
+    mou_version: SEIU-2024
+    effective_start: "2024-07-01"
+    effective_end: "2027-06-30"
+  - id: seiu_mou_2021_expired
+    file: sources/seiu_mou_2021_expired.pdf
+    title: Public Works (SEIU) MOU 2021–2024 (SUPERSEDED)
+    doc_type: MOU
+    bargaining_unit: public-works-maintenance
+    department: public-works
+    mou_version: SEIU-2021
+    effective_start: "2021-07-01"
+    effective_end: "2024-06-30"
+  - id: publicworks_salary_schedule
+    file: sources/publicworks_salary_schedule.pdf
+    title: Public Works Salary Schedule FY26
+    doc_type: salary-schedule
+    bargaining_unit: public-works-maintenance
+    department: public-works
+
+  # ---------------- SHERIFF ----------------
+  - id: sheriff_mou_2025
+    file: sources/sheriff_mou_2025.pdf
+    title: Sheriff Corrections MOU 2025–2028 — Article 12 Holdover & Premiums
+    doc_type: MOU
+    bargaining_unit: correctional-officers
+    department: sheriff
+    mou_version: SHERIFF-2025
+    effective_start: "2025-01-01"
+    effective_end: "2028-12-31"
+
+  # ---------------- FIRE ----------------
+  - id: fire_iaff_mou_2024
+    file: sources/fire_iaff_mou_2024.pdf
+    title: Fire (IAFF Local 3535) MOU 2024–2027
+    doc_type: MOU
+    bargaining_unit: fire-suppression
+    department: fire
+    mou_version: IAFF-2024
+    effective_start: "2024-07-01"
+    effective_end: "2027-06-30"
+  - id: fire_salary_schedule
+    file: sources/fire_salary_schedule.pdf
+    title: Fire Salary Schedule FY26
+    doc_type: salary-schedule
+    bargaining_unit: fire-suppression
+    department: fire
+
+  # ---------------- CITYWIDE (apply to everyone) ----------------
+  - id: personnel_rules
+    file: sources/personnel_rules.pdf
+    title: Personnel Rules & Regulations (unrepresented & management)
+    doc_type: policy
+    department: citywide
+  - id: travel_expense_policy
+    file: sources/travel_expense_policy.pdf
+    title: Administrative Policy 04 — Travel & Expense Reimbursement
+    doc_type: policy
+    department: citywide
+  - id: tuition_reimbursement_policy
+    file: sources/tuition_reimbursement_policy.pdf
+    title: Administrative Policy 09 — Tuition Reimbursement
+    doc_type: policy
+    department: citywide
+  - id: employee_handbook
+    file: sources/employee_handbook.pdf
+    title: Employee Handbook (excerpt)
+    doc_type: policy
+    department: citywide
+
+data:
+  adapter: csv
+  path: data/roster.csv
+  schema:
+    classification: str
+    department: str
+    rank: str
+    base_hourly: float
+    shift: str
+    schedule_days: list
+    fto: bool
+    bilingual: bool
+    hazmat: bool
+    post_cert: str
+    bargaining_unit: str
+
+rules: rules/rules_ratified.json
+proposed_rules: rules/rules_proposed.json
+catalog: catalog.json
+taxonomy: taxonomy.yaml
+extraction: prompt/extraction.yaml
+ledger: ledger.jsonl
+snapshots: snapshots
+
+rounding:
+  places: 2
+  mode: half_up
+
+# GOLDEN CASES — hand-verified scenarios. No rule set may be ratified unless it
+# reproduces EVERY one. A corpus needs one per bargaining unit, plus one on each side
+# of a date where an amendment takes effect.
+# VERIFICATION SCENARIOS — one per pay branch, each a KNOWN-CORRECT PAYCHECK.
+#
+# In production these are HARVESTED FROM PAYROLL, not authored: "we actually paid these
+# officers $4,388.80 on this real date — the system must reproduce it." Payroll exists
+# before the system does, so the scenarios do not depend on which documents arrive first
+# or in what order. Each is a regression test against ground truth; as more documents are
+# ingested and rules ratified, more of these turn from pending to pass. That is a coverage
+# metric that grows monotonically — never a gate that fails for documents not yet loaded.
+#
+# THIS corpus is synthetic, so the `expected_total`s below were computed by hand from the
+# drafted MOUs rather than lifted from a real paystub — which is exactly why the demo can
+# feel backwards. The `source` on each names the real-world paystub it STANDS IN FOR. On a
+# real case these numbers come case-by-case from the customer's payroll export (PRD §8).
+golden_cases:
+  # graveyard 5.5% (base MOU §6.1). Per officer, x bilingual x graveyard x holiday x 8h:
+  #   Officer C (bil FTO) 1063.44 · Sergeant C 1223.80 · Officer B 949.50 · Corporal C (bil FTO) 1152.06
+  - name: police holiday shift 2025-06-30 (base MOU, graveyard 5.5%)
+    source: "stands in for payroll PP ending 2025-06-30, sworn police holiday run"
+    # The pay components this paystub exercises — what Holly retrieves and drafts. A
+    # scenario's author knows what it pays; naming it makes drafting hit exactly the
+    # right clauses (holiday premium, shift differential, bilingual) and nothing else.
+    branch_query: "holiday premium pay shift differential graveyard swing bilingual base hourly rate"
+    subjects: ["Officer Step C (Graveyard, Bilingual FTO)", "Sergeant Step C (Graveyard)", "Officer Step B (Graveyard)", "Corporal Step C (Graveyard, Bilingual FTO)"]
+    params: {hours: 8, holiday_weekday: "Sat", date_iso: "2025-06-30"}
+    expected_total: 4388.80
+
+  # graveyard 6.5% (side letter supersedes §6.1):
+  #   Officer C (bil FTO) 1073.52 · Sergeant C 1235.40 · Officer B 958.50 · Corporal C (bil FTO) 1162.98
+  - name: police holiday shift 2026-07-04 (side letter supersedes §6.1, graveyard 6.5%)
+    source: "stands in for payroll PP ending 2026-07-04, sworn police holiday run"
+    branch_query: "holiday premium pay shift differential graveyard swing bilingual base hourly rate"
+    subjects: ["Officer Step C (Graveyard, Bilingual FTO)", "Sergeant Step C (Graveyard)", "Officer Step B (Graveyard)", "Corporal Step C (Graveyard, Bilingual FTO)"]
+    params: {hours: 8, holiday_weekday: "Sat", date_iso: "2026-07-04"}
+    expected_total: 4430.40
+
+  - name: public works 8-hour holiday shift (SEIU 2024 MOU)
+    source: "stands in for payroll PP ending 2026-07-04, SEIU public works holiday run"
+    branch_query: "holiday premium pay weekend bilingual base hourly rate hours worked"
+    subjects: ["Road Tech I (Day, Bilingual)", "Road Tech II (Weekend Schedule)", "Road Tech I (Day)"]
+    params: {hours: 8, holiday_weekday: "Sat", date_iso: "2026-07-04"}
+    expected_total: 1660.00
+
+  # An MOU is a rulebook: pay is one chapter. This scenario verifies a NON-MONEY rule
+  # with the same rigour as a dollar — police bereavement is 5 days per §11.3.
+  - name: police bereavement entitlement (§11.3)
+    source: "stands in for an HR leave-balance record, not a paystub"
+    branch_query: "bereavement leave death immediate family days"
+    result_type: days
+    subjects: ["Sergeant Step C (Graveyard)"]
+    params: {hours: 0}
+    expected_total: 5
+
+  # NO SHERIFF GOLDEN — deliberately. Article 12 pays for a "holdover on a
+  # High-Security Day", and no fact identifies whether a holdover occurred. The draft
+  # contract therefore (correctly) REFUSES to draft those rules and reports them under
+  # needs_data rather than inventing `when: True`. Sheriff costing in this corpus is
+  # unsatisfiable until the query-side `event` attribute exists (PRD §6.3/§7.3).
+  # This is a real, demonstrated instance of the attribute-model gap — not an oversight.

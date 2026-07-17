@@ -1,0 +1,17 @@
+classification,department,rank,base_hourly,shift,schedule_days,fto,bilingual,hazmat,post_cert,bargaining_unit
+"Officer Step C (Graveyard, Bilingual FTO)",police,Officer,48.00,Graveyard,"Mon,Tue,Wed,Thu,Fri",Yes,Yes,No,Advanced,sandcity-police
+Officer Step C (Day),police,Officer,48.00,Day,"Mon,Tue,Wed,Thu,Fri",No,No,No,Intermediate,sandcity-police
+Sergeant Step C (Graveyard),police,Sergeant,58.00,Graveyard,"Mon,Tue,Wed,Thu,Fri",No,No,No,Advanced,sandcity-police
+"Officer Step B (Swing, Bilingual)",police,Officer,45.00,Swing,"Mon,Tue,Wed,Thu,Fri",No,Yes,No,None,sandcity-police
+Officer Step B (Graveyard),police,Officer,45.00,Graveyard,"Mon,Tue,Wed,Thu,Fri",No,No,No,Intermediate,sandcity-police
+"Corporal Step C (Graveyard, Bilingual FTO)",police,Corporal,52.00,Graveyard,"Mon,Tue,Wed,Thu,Fri",Yes,Yes,No,Advanced,sandcity-police
+"Road Tech I (Day, Bilingual)",public-works,Road Tech I,30.00,Day,"Mon,Tue,Wed,Thu,Fri",No,Yes,No,None,public-works-maintenance
+Road Tech II (Weekend Schedule),public-works,Road Tech II,35.00,Day,"Wed,Thu,Fri,Sat,Sun",No,No,No,None,public-works-maintenance
+Road Tech I (Day),public-works,Road Tech I,30.00,Day,"Mon,Tue,Wed,Thu,Fri",No,No,No,None,public-works-maintenance
+"Correctional Officer Step A (Day, Hazmat FTO)",sheriff,Officer,40.00,Day,"Mon,Tue,Wed,Thu,Fri",Yes,Yes,Yes,None,correctional-officers
+Correctional Officer Step C (Graveyard),sheriff,Officer,45.00,Graveyard,"Mon,Tue,Wed,Thu,Fri",No,No,No,None,correctional-officers
+Correctional Officer Step A (Day),sheriff,Officer,40.00,Day,"Mon,Tue,Wed,Thu,Fri",No,No,No,None,correctional-officers
+"Correctional Officer Step B (Graveyard, Hazmat FTO)",sheriff,Officer,42.00,Graveyard,"Mon,Tue,Wed,Thu,Fri",Yes,Yes,Yes,None,correctional-officers
+"Firefighter (Day, Bilingual)",fire,Firefighter,38.00,Day,"Mon,Tue,Wed,Thu,Fri",No,Yes,No,None,fire-suppression
+Fire Engineer (Day),fire,Fire Engineer,43.00,Day,"Mon,Tue,Wed,Thu,Fri",No,No,No,None,fire-suppression
+Fire Captain (Day),fire,Fire Captain,50.00,Day,"Mon,Tue,Wed,Thu,Fri",No,No,No,None,fire-suppression

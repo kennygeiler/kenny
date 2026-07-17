@@ -1,0 +1,22 @@
+department:
+  - police
+  - sheriff
+  - fire
+  - public-works
+topic:
+  - salary
+  - overtime
+  - holiday-pay
+  - shift-differential
+  - specialty-premium
+  - education-incentive
+  - uniform-allowance
+  - health-welfare
+  - leave
+  - grievance
+  - discipline
+doc-type:
+  - MOU
+  - salary-schedule
+  - policy
+  - amendment

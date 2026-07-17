@@ -1,0 +1,9 @@
+description: >
+  Extract the parameters of a police holiday/shift costing question: which officers
+  and how many hours.
+entities:
+  subjects: Officer last names or names mentioned in the prompt.
+  hours: Number of hours in the shift.
+output_shape:
+  subjects: [str]
+  hours: float

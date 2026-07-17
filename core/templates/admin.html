@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Holly Admin — contract library, rule review and audit</title>
+  <link rel="stylesheet" href="/static/styles.css?v=4">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <header>
+    <h1>Holly <span class="hdr-sub">Admin</span></h1>
+    <p class="hdr-tag" id="caseName">Contract library, rule review and audit</p>
+    <nav aria-label="Sections">
+      <a href="/">Chat</a>
+      <a href="/admin" aria-current="page">Admin</a>
+    </nav>
+  </header>
+
+  <p class="demo-banner" id="demoBanner" role="note" hidden></p>
+
+  <div class="wrap">
+    <!-- Organised by lifecycle state: what we hold, what needs a decision, what is
+         live, whether it is verified, and what is blocked on data. Each tab has one
+         verb and one owner. -->
+    <!-- Tab order follows the actual flow: read documents, then per known answer draft
+         the rules it needs (Verification), then approve them (Review queue), then inspect
+         what is live (Rule library). Review-before-Verification was a fossil of the old
+         ingest-drafts-everything flow. -->
+    <div role="tablist" aria-label="Admin sections" class="tabs">
+      <button role="tab" id="tab-docs"   aria-controls="panel-docs"   aria-selected="true"  class="tab">1 · Documents <span class="pill" id="cnt-docs"></span></button>
+      <button role="tab" id="tab-verify" aria-controls="panel-verify" aria-selected="false" class="tab" tabindex="-1">2 · Verification <span class="pill" id="cnt-verify"></span></button>
+      <button role="tab" id="tab-review" aria-controls="panel-review" aria-selected="false" class="tab" tabindex="-1">3 · Review queue <span class="pill" id="cnt-review"></span></button>
+      <button role="tab" id="tab-lib"    aria-controls="panel-lib"    aria-selected="false" class="tab" tabindex="-1">Rule library <span class="pill" id="cnt-lib"></span></button>
+      <button role="tab" id="tab-audit"  aria-controls="panel-audit"  aria-selected="false" class="tab" tabindex="-1">Audit</button>
+    </div>
+
+    <main id="main">
+      <!-- ---------------- DOCUMENTS ---------------- -->
+      <section role="tabpanel" id="panel-docs" aria-labelledby="tab-docs" class="panel" tabindex="0">
+        <h2>Contract library</h2>
+        <p class="lede">Every document Holly can answer from. Reading a contract makes it
+          <strong>searchable</strong> (chat can quote it immediately); costing rules are drafted
+          per paystub on the <strong>Verification</strong> tab, and a clause only counts as
+          <strong>live</strong> once a person has approved the rule drawn from it.</p>
+
+        <div class="toolbar">
+          <label class="file-label" for="pdfFile">Add a contract (PDF)</label>
+          <input type="file" id="pdfFile" accept="application/pdf" aria-describedby="upload-help">
+          <button type="button" onclick="upload()">Upload and read</button>
+          <button type="button" class="ghost" onclick="ingest()">Re-read all documents</button>
+        </div>
+        <p class="help" id="upload-help">Reading a large contract takes a few minutes: every page is
+          parsed for its text, its tables, and the exact position of each clause.</p>
+        <p id="uploadMsg" class="muted" role="status" aria-live="polite"></p>
+        <div id="docs"></div>
+      </section>
+
+      <!-- ---------------- VERIFICATION ---------------- -->
+      <section role="tabpanel" id="panel-verify" aria-labelledby="tab-verify" class="panel" tabindex="0" hidden>
+        <h2>Verification — start here</h2>
+        <p class="lede">Each card is a <strong>known answer</strong> (a real paystub, or a figure an
+          analyst worked out by hand). To make Holly able to cost it, press <strong>Draft the rules for
+          this scenario</strong>: Holly pulls only the clauses that answer this paystub, drafts the
+          handful of rules they need, and checks the total. Approve alone is never enough — a rule set
+          that cannot reproduce these known answers cannot go live.</p>
+        <div id="verify"></div>
+      </section>
+
+      <!-- ---------------- REVIEW QUEUE ---------------- -->
+      <section role="tabpanel" id="panel-review" aria-labelledby="tab-review" class="panel" tabindex="0" hidden>
+        <h2>Review queue</h2>
+        <p class="lede">Rules Holly drafted <strong>for a specific known paystub</strong> (from the
+          <strong>Verification</strong> tab), waiting for your approval. None affect an answer yet. Only
+          the handful a real scenario needs — not the whole contract — so each is quick to check against
+          its clause (<strong>View source</strong> highlights it on the page). Approve the ones that match.</p>
+        <div id="reviewMsg" role="status" aria-live="polite"></div>
+        <div id="review"></div>
+        <div id="reviewBtns" class="toolbar" hidden>
+          <button type="button" onclick="ratify()">Approve selected</button>
+          <button type="button" class="ghost" onclick="setAll(true)">Select all</button>
+          <button type="button" class="ghost" onclick="setAll(false)">Clear selection</button>
+        </div>
+      </section>
+
+      <!-- ---------------- RULE LIBRARY (the contract dictionary) ---------------- -->
+      <section role="tabpanel" id="panel-lib" aria-labelledby="tab-lib" class="panel" tabindex="0" hidden>
+        <h2>Rule library</h2>
+        <p class="lede">The contract, as Holly executes it — in three honest parts:
+          what <strong>computes</strong> (approved rules, each naming its clause and approver),
+          what Holly <strong>declined to model</strong> (clauses that pay on a dimension your
+          classification table doesn't have — with the dimension that would unlock them), and
+          everything else, which is answered by <strong>quoting</strong> the contract, never
+          computing. This is the page to hand an auditor.</p>
+        <div id="library"></div>
+        <div id="gaps"></div>
+      </section>
+
+      <!-- ---------------- AUDIT ---------------- -->
+      <section role="tabpanel" id="panel-audit" aria-labelledby="tab-audit" class="panel" tabindex="0" hidden>
+        <h2>Audit trail <span id="verifyChain"></span></h2>
+        <p class="lede">Every action — each question asked, each document chosen, each calculation
+          step, each approval — in a tamper-evident record. Altering any entry breaks the chain and
+          is detected.</p>
+        <div class="toolbar">
+          <button type="button" class="ghost" onclick="loadLedger()">Refresh</button>
+          <a href="/admin/ledger/export" target="_blank" rel="noopener">
+            <button type="button" class="ghost">Export the record</button></a>
+        </div>
+        <h3>Recent questions</h3>
+        <div id="history"></div>
+        <h3>Event log</h3>
+        <div id="ledger" class="mono"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" hidden>
+    <div class="dh">
+      <strong id="drawerTitle">Rule source</strong>
+      <button type="button" class="ghost" onclick="closeDrawer()">Close</button>
+    </div>
+    <div class="db" id="drawerBody"></div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const esc = s => (s ?? '').toString().replace(/[&<>"]/g, m =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+    const el = h => { const d = document.createElement('div'); d.innerHTML = h.trim(); return d.firstChild; };
+
+    /* ---------------- accessible tabs (WCAG 2.1 AA keyboard pattern) ---------------- */
+    const TABS = ['docs', 'verify', 'review', 'lib', 'audit'];
+    function showTab(name, focus = true) {
+      TABS.forEach(t => {
+        const tab = $('tab-' + t), panel = $('panel-' + t);
+        const on = t === name;
+        tab.setAttribute('aria-selected', on);
+        tab.tabIndex = on ? 0 : -1;
+        panel.hidden = !on;
+      });
+      if (focus) $('tab-' + name).focus();
+      history.replaceState(null, '', '#' + name);
+    }
+    TABS.forEach((t, i) => {
+      $('tab-' + t).addEventListener('click', () => showTab(t));
+      $('tab-' + t).addEventListener('keydown', e => {
+        const k = e.key;
+        if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(k)) return;
+        e.preventDefault();
+        const n = k === 'Home' ? 0 : k === 'End' ? TABS.length - 1
+                : k === 'ArrowRight' ? (i + 1) % TABS.length : (i - 1 + TABS.length) % TABS.length;
+        showTab(TABS[n]);
+      });
+    });
+
+    /* ---------------- documents + coverage ---------------- */
+    let COVERAGE = [];
+    async function loadDocs() {
+      const res = await fetch('/admin/coverage').then(r => r.json());
+      COVERAGE = res.documents;
+      $('cnt-docs').textContent = COVERAGE.length;
+      const byDept = {};
+      COVERAGE.forEach(d => (byDept[d.department || 'unassigned'] ||= []).push(d));
+      const order = Object.keys(byDept).sort((a, b) =>
+        a === 'citywide' ? 1 : b === 'citywide' ? -1 : a.localeCompare(b));
+      $('docs').innerHTML = order.map(dept => `
+        <section aria-label="${esc(dept)} documents" class="dept">
+          <h3 class="dept-head">${esc(dept)} <span class="muted">${byDept[dept].length} document(s)</span></h3>
+          ${byDept[dept].map(docCard).join('')}
+        </section>`).join('');
+    }
+
+    function docCard(d) {
+      const eff = d.effective_start ? `${esc(d.effective_start)} to ${esc(d.effective_end || 'open')}` : null;
+      const chips = [['department', d.department], ['unit', d.bargaining_unit],
+                     ['type', d.doc_type], ['version', d.mou_version], ['effective', eff]]
+        .filter(([, v]) => v)
+        .map(([k, v], i) => `<span class="chip lvl${Math.min(i, 2)}"><b>${k}</b> ${esc(v)}</span>`)
+        .join('');
+      const tot = d.clauses || 0;
+      const pct = n => tot ? (n ? Math.max(2, Math.round(n / tot * 100)) : 0) : 0;
+      const bar = tot ? `
+        <div class="cov" role="img" aria-label="Of ${tot} clauses: ${d.live} live, ${d.pending} awaiting review, ${d.blocked} blocked on missing data, ${d.narrative} narrative">
+          <span class="cov-live" style="width:${pct(d.live)}%"></span>
+          <span class="cov-pending" style="width:${pct(d.pending)}%"></span>
+          <span class="cov-blocked" style="width:${pct(d.blocked)}%"></span>
+          <span class="cov-narrative" style="width:${pct(d.narrative)}%"></span>
+        </div>
+        <ul class="cov-key">
+          <li><i class="k-live"></i>${d.live} live</li>
+          <li><i class="k-pending"></i>${d.pending} awaiting review</li>
+          <li><i class="k-blocked"></i>${d.blocked} blocked on data</li>
+          <li><i class="k-narrative"></i>${d.narrative} narrative</li>
+        </ul>` : '';
+      const warn = !tot
+        ? `<p class="flagline">Nothing could be read from this document — it is not searchable.</p>`
+        : d.parse_source === 'raw-text-fallback'
+        ? `<p class="notice">Read as plain text: this document's layout could not be analysed, so
+             citations open the right <em>page</em> rather than highlighting the exact clause.</p>` : '';
+      const sup = d.supersedes ? `<p class="muted">Replaces <code>${esc(d.supersedes.doc_id)}</code>
+        §${esc((d.supersedes.clauses || []).join(', '))}</p>` : '';
+      // The title links to the contract itself. The rendered page proves one citation;
+      // a reader checking a document as a whole wants the document, not a picture of it.
+      return `<article class="card">
+        <h4><a href="/doc/${encodeURIComponent(d.doc_id)}/file" target="_blank"
+               rel="noopener">${esc(d.title || d.doc_id)}<span class="ext" aria-hidden="true"> &#8599;</span><span class="sr-only"> (opens the PDF in a new tab)</span></a></h4>
+        <p class="mono id">${esc(d.doc_id)} · ${tot} clauses</p>
+        ${d.declared_title && d.declared_title !== d.title
+          ? `<p class="muted">Filed in this case as “${esc(d.declared_title)}”.</p>` : ''}
+        <p class="chips">${chips}</p>
+        ${sup}${warn}${bar}
+        ${d.summary ? `<p class="summary">${esc(d.summary)}</p>` : ''}
+        ${(d.tags || []).length ? `<p class="chips">${d.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</p>` : ''}
+      </article>`;
+    }
+
+    /* ---------------- rules ---------------- */
+    let PROPOSED = [], RATIFIED = new Set(), ERRORS = {};
+    async function loadRules() {
+      const res = await fetch('/admin/proposed').then(r => r.json());
+      PROPOSED = res.rules || [];
+      RATIFIED = new Set(res.ratified_ids || []);
+      try { ERRORS = (await fetch('/admin/validate').then(r => r.json())).errors || {}; }
+      catch (e) { ERRORS = {}; }
+      renderReview();
+      renderLibrary();
+      renderGaps(res.needs_data);
+    }
+
+    // The DECLARED title (from case.yaml) wins in the rule library and review queue: it is
+    // the clean, human-filed name. The auto-extracted cover title is great on a clean PDF
+    // but on an OCR'd scan it can grab a stray line (a date fragment) — which surfaced as
+    // "December 31, 2028" standing in for a document name.
+    const docTitle = id => { const d = COVERAGE.find(x => x.doc_id === id) || {};
+      return d.declared_title || d.title || id; };
+
+    const ruleBody = r => `<p class="muted">${esc(r.human_readable || '')}</p>
+      <p class="expr"><code>when ${esc(r.when)}</code>
+      ${r.compute ? `<code>= ${esc(r.compute)}</code>` : ''}
+      ${r.set ? `<code>set ${esc(JSON.stringify(r.set))}</code>` : ''}</p>`;
+
+    function renderReview() {
+      const pending = PROPOSED.filter(r => !RATIFIED.has(r.id));
+      $('cnt-review').textContent = pending.length;
+      if (!pending.length) {
+        $('review').innerHTML = PROPOSED.length
+          ? `<p class="empty">Nothing awaiting review — every rule drawn from these contracts has
+             been dealt with.</p>`
+          : `<p class="empty">No rules drafted yet. Go to <strong>Verification</strong> and press
+             <em>Draft the rules for this scenario</em> on a pending paystub.</p>`;
+        $('reviewBtns').hidden = true;
+        return;
+      }
+      const byDoc = {};
+      pending.forEach(r => ((byDoc[(r.citation || {}).doc_id || r._doc_id || 'unknown'] ||= []).push(r)));
+      $('review').innerHTML = Object.entries(byDoc).map(([doc, rules]) => `
+        <section aria-label="Rules from ${esc(docTitle(doc))}" class="dept">
+          <h3 class="dept-head">${esc(docTitle(doc))} <span class="muted">${rules.length} to review</span></h3>
+          ${rules.map(reviewCard).join('')}
+        </section>`).join('');
+      $('reviewBtns').hidden = false;
+    }
+
+    function reviewCard(r) {
+      const cit = r.citation || {};
+      const errs = ERRORS[r.id], bad = !!errs;
+      return `<article class="card rule ${bad ? 'invalid' : ''}">
+        <div class="rule-head">
+          <input type="checkbox" class="ruleChk" id="chk-${esc(r.id)}" data-id="${esc(r.id)}"
+                 ${bad ? 'disabled' : 'checked'}>
+          <label for="chk-${esc(r.id)}"><strong>${esc(r.topic || r.id)}</strong></label>
+          <span class="badge-type">${esc(r.result_type || 'currency')}</span>
+          <span class="muted">§${esc(cit.clause || '?')}</span>
+          ${bad ? `<span class="bad">Cannot be approved</span>` : `<span class="ok">Checks passed</span>`}
+          <button type="button" class="ghost small"
+            onclick="viewSource('${esc(cit.doc_id || r._doc_id || '')}','${esc(cit.clause || '')}','${esc(r.id)}')">
+            View source</button>
+        </div>
+        ${ruleBody(r)}
+        ${bad ? `<p class="flagline">${errs.map(esc).join('<br>')}</p>` : ''}
+      </article>`;
+    }
+
+    const setAll = v => document.querySelectorAll('.ruleChk').forEach(c => { if (!c.disabled) c.checked = v; });
+
+    async function ratify() {
+      const ids = [...document.querySelectorAll('.ruleChk')].filter(c => c.checked).map(c => c.dataset.id);
+      if (!ids.length) { msg('reviewMsg', 'bad', 'Select at least one rule to approve.'); return; }
+      const res = await fetch('/admin/ratify', {method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({approver: 'hr-analyst', rule_ids: ids})}).then(r => r.json());
+
+      if (res.rejected) {
+        msg('reviewMsg', 'bad', `<strong>Nothing was approved.</strong> These rules cannot run
+          against your employee data:<br>` + Object.entries(res.rejected)
+            .map(([id, e]) => `<code>${esc(id)}</code>: ${e.map(esc).join('; ')}`).join('<br>'));
+      } else if (res.golden_failed) {
+        const g = res.golden_failed;
+        msg('reviewMsg', 'bad', `<strong>Nothing was approved — the known-answer check failed.</strong><br>
+          “${esc(g.scenario)}” must come to <strong>${esc(g.expected)}</strong>, but these rules
+          produce <strong>${esc(g.actual)}</strong>.
+          ${g.per_subject ? `<br><span class="muted">${Object.entries(g.per_subject)
+            .map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(' · ')}</span>` : ''}
+          ${g.error ? '<br>' + esc(g.error) : ''}
+          <br>The rules are well-formed but do not reproduce the verified answer. Compare the
+          flagged rule against its clause.`);
+      } else if (res.ratified && res.ratified.length) {
+        msg('reviewMsg', 'ok', `<strong>Approved ${res.ratified.length} rule(s).</strong>
+          They reproduced every known answer and are now live — see the <strong>Rule library</strong>.`);
+      } else {
+        msg('reviewMsg', 'bad', esc(res.warning || 'Nothing was approved.'));
+      }
+      loadRules(); loadVerify(); loadDocs(); loadLedger();
+    }
+
+    const msg = (where, kind, html) =>
+      $(where).innerHTML = `<p class="${kind === 'ok' ? 'notice ok-notice' : 'flagline'}">${html}</p>`;
+
+    /* ---------------- rule library ---------------- */
+    async function renderLibrary() {
+      const live = PROPOSED.filter(r => RATIFIED.has(r.id));
+      $('cnt-lib').textContent = RATIFIED.size;
+      if (!RATIFIED.size) {
+        $('library').innerHTML = `<p class="empty">No rules are live yet. Approve rules on the
+          <strong>Review queue</strong> and they will appear here.</p>`;
+        return;
+      }
+      let unverified = new Set();
+      try {
+        const v = await fetch('/admin/verification').then(r => r.json());
+        unverified = new Set((v.unverified || []).map(u => u.id));
+      } catch (e) {}
+      const byDoc = {};
+      live.forEach(r => ((byDoc[(r.citation || {}).doc_id || '?'] ||= []).push(r)));
+      $('library').innerHTML = Object.entries(byDoc).map(([doc, rules]) => `
+        <section aria-label="Live rules from ${esc(docTitle(doc))}" class="dept">
+          <h3 class="dept-head">${esc(docTitle(doc))} <span class="muted">${rules.length} live</span></h3>
+          ${rules.map(r => {
+            const cit = r.citation || {};
+            return `<article class="card rule ratified">
+              <div class="rule-head">
+                <strong>${esc(r.topic || r.id)}</strong>
+                <span class="badge-type">${esc(r.result_type || 'currency')}</span>
+                <span class="muted">§${esc(cit.clause || '?')}</span>
+                <span class="badge-ratified">Live</span>
+                ${unverified.has(r.id) ? `<span class="warn-badge">Not covered by a check</span>` : ''}
+                <button type="button" class="ghost small"
+                  onclick="viewSource('${esc(cit.doc_id || '')}','${esc(cit.clause || '')}','${esc(r.id)}')">
+                  View source</button>
+              </div>
+              ${ruleBody(r)}
+              <p class="muted mono id">${esc(r.id)}</p>
+            </article>`;
+          }).join('')}
+        </section>`).join('');
+    }
+
+    /* ---------------- verification ---------------- */
+    async function loadVerify() {
+      const v = await fetch('/admin/verification').then(r => r.json());
+      $('cnt-verify').textContent = (v.goldens || []).length;
+      // Three states, not two. "Pending" means no live rule covers the scenario yet, so
+      // Holly refuses to cost it — unproven, but not wrong, and not a blocker.
+      const CARD = {pass: 'ratified', fail: 'invalid', pending: 'warn-card'};
+      const WORD = {pass: 'Reproduced', fail: 'Did not reproduce', pending: 'Not covered yet'};
+      const TONE = {pass: 'ok', fail: 'bad', pending: 'warn-text'};
+      const rows = (v.goldens || []).map(g => `
+        <article class="card ${CARD[g.status] || 'invalid'}">
+          <div class="rule-head">
+            <strong>${esc(g.name)}</strong>
+            <span class="badge-type">${esc(g.result_type)}</span>
+            <span class="${TONE[g.status] || 'bad'}">${WORD[g.status] || 'Did not reproduce'}</span>
+          </div>
+          <p class="muted">Known answer <strong>${esc(g.expected)}</strong> · Holly computes
+            <strong>${esc(g.actual ?? '—')}</strong>${
+              g.status !== 'pending' && g.error ? ' · ' + esc(g.error) : ''}</p>
+          ${g.source ? `<p class="muted">Ground truth: ${esc(g.source)}</p>` : ''}
+          ${g.note ? `<p class="muted">${esc(g.note)}</p>` : ''}
+          ${g.per_subject ? `<p class="muted">${Object.entries(g.per_subject)
+            .map(([k, x]) => `${esc(k)}: ${esc(x)}`).join(' · ')}</p>` : ''}
+          ${(g.needs_docs || []).length ? `<p class="muted">Needs: ${g.needs_docs.map(d =>
+            `${esc(d.title)} <span class="${d.ingested ? 'ok' : 'bad'}">${d.ingested ? '✓ ingested' : '✗ not ingested'}</span>`).join(' · ')}</p>` : ''}
+          ${g.status !== 'pass' ? (g.ready
+            ? `<button class="ghost" onclick="draftScenario(this, ${JSON.stringify(g.name).replace(/"/g, '&quot;')})">
+                 Draft the rules for this scenario</button>`
+            : `<p class="warn-text">Ingest the documents above first (Documents tab), then draft.</p>`) : ''}
+        </article>`).join('');
+      const un = v.unverified || [];
+      $('verify').innerHTML = (rows || `<p class="empty">No known answers defined. Add at least one
+          per bargaining unit — a rule no check exercises is unverified.</p>`)
+        + (un.length ? `<div class="card warn-card">
+            <h4>Live rules no check exercises (${un.length} of ${v.rule_count})</h4>
+            <p class="muted">Approved and running, but no known answer proves they are right.
+              Add a check that uses them.</p>
+            ${un.map(u => `<p class="muted">${esc(u.topic || u.id)} · ${esc(u.result_type)} · §${esc(u.clause)}</p>`).join('')}
+          </div>`
+          : `<p class="notice ok-notice">Every live rule is exercised by at least one known answer.</p>`);
+    }
+
+    // Draft ONLY the rules this scenario needs — retrieve its pay-branch clauses, draft
+    // the handful, verify against the paystub. Review collapses from a whole MOU to ~5.
+    async function draftScenario(btn, name) {
+      btn.disabled = true; btn.textContent = 'Drafting the rules this scenario needs…';
+      const res = await fetch('/admin/draft_scenario', {method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({scenario: name})}).then(r => r.json());
+      if (res.error) { btn.textContent = res.error; return; }
+      const v = res.verify || {};
+      const n = (res.drafted || []).length;
+      const clauses = (res.considered_clauses || []).join(', ');
+      btn.outerHTML = `<p class="muted">Drafted <strong>${n}</strong> rule(s) from ${esc(clauses)} —
+        they now sit in the <strong>Review queue</strong>. Known-answer check:
+        <strong class="${v.status === 'pass' ? 'ok' : 'bad'}">${esc(v.status)}</strong>
+        (expected ${esc(v.expected)}, computed ${esc(v.actual ?? '—')}).
+        ${v.status === 'pass' ? 'Review each against its clause, then approve.'
+          : 'Close, but not exact — open the rules and compare against the clause.'}</p>`;
+      loadRules();  // refresh the review queue
+    }
+
+    /* ---------------- data gaps ---------------- */
+    // Part two of the Rule library: clauses Holly DECLINED to model. Not a failure — the
+    // contract pays on a dimension the classification table doesn't have (an `event` like
+    // court time or a holdover; an `assignment` like Detective Bureau). Refusing beats
+    // silently paying every classification; the card names the dimension that unlocks it.
+    async function renderGaps(needsData) {
+      const res = await fetch('/admin/gaps').then(r => r.json());
+      const gaps = res.gaps || [];
+      const narrative = (needsData || []).filter(n => n.category === 'narrative');
+      if (!gaps.length && !narrative.length) { $('gaps').innerHTML = ''; return; }
+      $('gaps').innerHTML = `<h3 class="dept-head" style="margin-top:18px">Declined to model
+          <span class="muted">${gaps.reduce((n, g) => n + g.unlocks.length, 0)} clause(s)</span></h3>`
+        + (gaps.length ? gaps.map(g => `
+        <article class="card ${g.field === 'other' ? '' : 'gap-actionable'}">
+          <h4>${g.field === 'other'
+            ? `Needs a decision — ${g.unlocks.length} clause(s) with no single unlocking dimension`
+            : `Needs a <code>${esc(g.field)}</code> dimension on the classification table`}</h4>
+          <p class="muted">${g.field === 'other'
+            ? 'A person has to say what fact would settle these.'
+            : `Add it (new classification rows) and ${g.unlocks.length} clause(s) become costable:`}</p>
+          <ul class="unlocks">
+            ${g.unlocks.map(u => `<li><strong>§${esc(u.clause)}</strong>
+              <span class="muted">${esc(u.title || u.doc_id)}</span><br>
+              <span class="muted">${esc(u.reason || '')}</span></li>`).join('')}
+          </ul>
+        </article>`).join('') : '')
+        + (narrative.length ? `<details class="card">
+            <summary><strong>Answered by quoting, not computing (${narrative.length})</strong></summary>
+            <p class="muted">Narrative or procedural text — recognition, management rights, conduct.
+              Chat quotes these clauses directly. No rule will ever exist for them, correctly.</p>
+            ${narrative.slice(0, 40).map(n =>
+              `<p class="muted">§${esc(n.clause)} — ${esc(n.reason || '')}</p>`).join('')}
+          </details>` : '');
+    }
+
+    /* ---------------- ingest ---------------- */
+    async function ingest() {
+      $('uploadMsg').textContent = 'Reading all documents…';
+      const start = await fetch('/admin/ingest', {method: 'POST'}).then(r => r.json());
+      const res = await pollJob(start.job_id);
+      if (!res) return;
+      // Say which declared documents have no file. Silently cataloguing them as empty
+      // made the library list contracts Holly could not answer from, with no reason given.
+      const miss = res.missing || [];
+      let msg = `Read ${res.ingested.length} document(s). Ask about them in chat right away; ` +
+                `costing rules are drafted per scenario on the Verification tab.`;
+      if (miss.length) {
+        msg += ` ${miss.length} declared in this case have no PDF yet and were skipped — ` +
+               `upload them to add them: ${miss.map(m => m.doc_id).join(', ')}.`;
+      }
+      $('uploadMsg').innerHTML = miss.length
+        ? `<span class="warn-text">${esc(msg)}</span>` : esc(msg);
+      loadDocs(); loadRules();
+    }
+
+    async function upload() {
+      const f = $('pdfFile').files[0];
+      if (!f) { $('uploadMsg').textContent = 'Choose a PDF first.'; return; }
+      $('uploadMsg').textContent = `Reading ${f.name}… this can take a few minutes.`;
+      const fd = new FormData(); fd.append('file', f);
+      const res = await fetch('/admin/upload', {method: 'POST', body: fd}).then(r => r.json());
+      if (res.error) { $('uploadMsg').innerHTML = `<span class="bad">${esc(res.error)}</span>`; return; }
+      $('uploadMsg').innerHTML = esc(`Added ${res.doc_id}: ${res.clauses} clauses. ${res.note || ''}`);
+      loadDocs(); loadRules();
+    }
+
+    async function pollJob(jobId) {
+      for (;;) {
+        await new Promise(r => setTimeout(r, 900));
+        const j = await fetch(`/admin/ingest/status/${jobId}`).then(r => r.json());
+        if (j.status === 'running') {
+          $('uploadMsg').textContent = `Reading ${j.current || ''} — ${j.done} of ${j.total} documents done.`;
+          continue;
+        }
+        if (j.status === 'error') {
+          $('uploadMsg').innerHTML = `<span class="bad">Could not read the documents: ${esc(j.error)}</span>`;
+          return null;
+        }
+        return j.result;
+      }
+    }
+
+    /* ---------------- source drawer ---------------- */
+    let LAST_FOCUS = null;
+    async function viewSource(docId, clause, ruleId) {
+      LAST_FOCUS = document.activeElement;
+      const rule = PROPOSED.find(r => r.id === ruleId) || {};
+      const body = $('drawerBody');
+      $('drawerTitle').textContent = `${rule.topic || ruleId} — ${docId} §${clause}`;
+      body.innerHTML = `<div class="card">${ruleBody(rule)}</div>
+        <p class="lede">Does the clause below actually say this?</p>`;
+      const d = $('drawer');
+      d.hidden = false; d.classList.add('open');
+      d.querySelector('button').focus();
+
+      // The rule's own citation carries page + bbox — authoritative even when the
+      // document has no clause numbers to resolve (OCR'd contracts). Use it as the
+      // fallback so View source always renders the page, never a 404.
+      const cite = rule.citation || {};
+      let c = null, err = null;
+      try {
+        const resp = await fetch(`/admin/clause?doc_id=${encodeURIComponent(docId)}`
+          + `&clause=${encodeURIComponent(clause)}`
+          + (cite.page != null ? `&page=${encodeURIComponent(cite.page)}` : ''));
+        c = await resp.json().catch(() => null);
+        if (!resp.ok && !(cite.page != null)) err = `HTTP ${resp.status}`;
+      } catch (e) { err = String(e); }
+      // Prefer the endpoint's resolved clause; else fall back to the rule's citation.
+      const page = (c && c.page != null) ? c.page : cite.page;
+      const bbox = (c && c.bbox) ? c.bbox : (cite.bbox || []);
+      if (page == null) {
+        body.appendChild(el(`<p class="flagline">Could not load the clause: ${esc(err || (c && c.error) || 'no page on this citation')}</p>`));
+        return;
+      }
+      if (c && c.text) body.appendChild(el(`<blockquote class="clause">${esc(c.text)}</blockquote>`));
+      const fig = el(`<figure class="cite"><figcaption class="muted">Page ${esc(page)} of the
+        contract, with the cited passage highlighted:</figcaption></figure>`);
+      const img = new Image();
+      img.src = `/doc/${encodeURIComponent(docId)}/page/${page}?bbox=${bbox.join(',')}`;
+      img.alt = `Page ${page} of ${docId} with the citation outlined in red`;
+      img.onerror = () => { img.remove(); fig.appendChild(el('<p class="muted">The page image could not be produced.</p>')); };
+      fig.appendChild(img);
+      body.appendChild(fig);
+    }
+    function closeDrawer() {
+      const d = $('drawer');
+      d.classList.remove('open'); d.hidden = true;
+      if (LAST_FOCUS) LAST_FOCUS.focus();
+    }
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !$('drawer').hidden) closeDrawer();
+    });
+
+    /* ---------------- audit ---------------- */
+    async function loadLedger() {
+      const res = await fetch('/admin/ledger').then(r => r.json());
+      $('verifyChain').innerHTML = res.verified
+        ? `<span class="badge-ratified">Record intact</span>`
+        : `<span class="bad">Record altered: ${esc(res.verify_message)}</span>`;
+      $('ledger').innerHTML = res.events.slice(-60).reverse().map(e => `
+        <p class="evt"><span class="t">${esc(e.type)}</span>
+          <span class="muted">#${e.seq} · ${esc(e.actor)}${e.query_id ? ' · ' + esc(e.query_id) : ''}</span><br>
+          <span class="muted">${esc(JSON.stringify(e.payload)).slice(0, 180)}</span></p>`).join('');
+      const h = await fetch('/admin/history').then(r => r.json());
+      $('history').innerHTML = h.history.length ? h.history.slice(0, 12).map(x => `
+        <p class="evt"><strong>${x.total != null ? esc(x.total) : '—'}</strong>
+          <span class="muted">${esc(x.iso || '')}</span><br>${esc(x.prompt || '')}</p>`).join('')
+        : `<p class="empty">No questions asked yet.</p>`;
+    }
+
+    /* ---------------- boot ---------------- */
+    fetch('/api/case').then(r => r.json()).then(c => {
+      $('caseName').textContent = c.name || 'Contract library, rule review and audit';
+      if (c.banner) { const b = $('demoBanner'); b.textContent = c.banner; b.hidden = false; }
+    });
+    loadDocs(); loadRules(); loadVerify(); loadLedger();
+    if (location.hash && TABS.includes(location.hash.slice(1))) showTab(location.hash.slice(1), false);
+  </script>
+</body>
+</html>

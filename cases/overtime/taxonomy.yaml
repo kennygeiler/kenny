@@ -1,0 +1,20 @@
+# Evolvable seed tag vocabulary (PRD 5.1). The LLM tags documents against this
+# vocabulary and may PROPOSE new tags, which enter here only via admin approval.
+department:
+  - public-works
+  - sheriff
+  - fire
+  - general-services
+topic:
+  - overtime
+  - holiday-pay
+  - yearly-pay-cola
+  - shift-differential
+  - bilingual-premium
+  - leave
+  - benefits
+doc-type:
+  - MOU
+  - salary-schedule
+  - policy
+  - amendment
