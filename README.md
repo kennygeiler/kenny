@@ -13,10 +13,11 @@ questions; it never computes the number.
 model, for a product audience. · [`ARCHITECTURE.md`](ARCHITECTURE.md)
 ([PDF](ARCHITECTURE.pdf)) — component map, data contracts, flows, security, and the
 onboarding playbook. · [`DEPLOY.md`](DEPLOY.md) — putting it behind a shared URL. ·
-[`CASE_RESPONSE.md`](CASE_RESPONSE.md) — the PM case study this prototype was built for.
 
 The PRD owns *intent*; ARCHITECTURE owns *behaviour*. Where they overlap, ARCHITECTURE is
 the tiebreak.
+
+Use santa cruz case for Holly Case. Other cases are tests.
 
 ---
 
@@ -100,17 +101,6 @@ Chat handles four kinds of question:
    and the **source clause boxed on the rendered PDF page**. This is the "number I can
    defend" made literal.
 
-### Expected results
-
-Two cases ship, proving the engine is **config-not-code** — same `core/`, different data:
-
-| Case | Prompt | Expected result | Why it's a distinct test |
-|---|---|---|---|
-| `cases/overtime` | 8-hour shift, road tech classifications, July 4th (Saturday) | **$1,660.00** | SEIU MOU Article 9; weekend-schedule ambiguity flagged. |
-| `cases/sheriff` | 6-hour mandatory holdover, detention + patrol classifications, a High-Security Day | **$1,940.56** | Sheriff MOU Art. 12: 2.0× multiplier, $200 bonus, pre-multiplier hazmat +8%, and an equality-based exception (`shift == "Graveyard"`). |
-
-Run the sheriff case with `python scripts/make_sheriff_pdfs.py` then
-`CASE=cases/sheriff uvicorn core.app:app`.
 
 ---
 
