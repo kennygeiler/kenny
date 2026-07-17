@@ -44,7 +44,7 @@ Four rules, enforced in the architecture rather than promised in prose:
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt          # docling is heavy; see "offline" below
 python scripts/make_reference_pdfs.py    # generate reference PDFs + clause sidecars
-pytest                                    # proves the reference case = $1,660.00
+pytest                                    # proves the reference case 
 uvicorn core.app:app --reload            # http://127.0.0.1:8000 (chat) · /admin (ops)
 ```
 
@@ -94,9 +94,8 @@ Chat handles four kinds of question:
 
 **What to expect from a costing answer:**
 
-1. A **single deterministic figure** — e.g. **$1,660.00** for the overtime case.
-2. The answer is **routed to the right document** (the MOU, *not* the salary schedule) and
-   any ambiguity is flagged (e.g. the weekend-schedule §9.2 edge case).
+1. A **single deterministic figure** 
+2. The answer is **routed to the right document**
 3. **Click any dollar amount** → the audit drawer opens, showing the full decision trace
    and the **source clause boxed on the rendered PDF page**. This is the "number I can
    defend" made literal.
