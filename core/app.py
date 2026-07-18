@@ -734,6 +734,11 @@ def admin_proposed():
                 for r in case.rules()}
     data["ratified_ids"] = sorted(ratified.keys())
     data["ratified_meta"] = ratified
+    # The FULL ratified library, verbatim from disk. The rule-library UI must render from
+    # this — not from the proposed queue filtered to ratified ids. The queue is ephemeral
+    # (cleared on reseed, not shipped in the image), so deriving the library display from
+    # it showed "4" in the tab count and an empty page beneath it.
+    data["ratified_rules"] = _raw_ratified(case)
     return data
 
 

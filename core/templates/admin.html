@@ -217,11 +217,12 @@
     }
 
     /* ---------------- rules ---------------- */
-    let PROPOSED = [], RATIFIED = new Set(), ERRORS = {};
+    let PROPOSED = [], RATIFIED = new Set(), RATIFIED_RULES = [], ERRORS = {};
     async function loadRules() {
       const res = await fetch('/admin/proposed').then(r => r.json());
       PROPOSED = res.rules || [];
       RATIFIED = new Set(res.ratified_ids || []);
+      RATIFIED_RULES = res.ratified_rules || [];
       try { ERRORS = (await fetch('/admin/validate').then(r => r.json())).errors || {}; }
       catch (e) { ERRORS = {}; }
       renderReview();
@@ -320,9 +321,12 @@
 
     /* ---------------- rule library ---------------- */
     async function renderLibrary() {
-      const live = PROPOSED.filter(r => RATIFIED.has(r.id));
-      $('cnt-lib').textContent = RATIFIED.size;
-      if (!RATIFIED.size) {
+      // Render from the ratified LIBRARY, never from the proposed queue: the queue is
+      // ephemeral (cleared on reseed), and filtering it by ratified ids showed a count
+      // of 4 above an empty page.
+      const live = RATIFIED_RULES;
+      $('cnt-lib').textContent = live.length;
+      if (!live.length) {
         $('library').innerHTML = `<p class="empty">No rules are live yet. Approve rules on the
           <strong>Review queue</strong> and they will appear here.</p>`;
         return;
