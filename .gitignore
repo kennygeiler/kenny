@@ -19,3 +19,11 @@ cases/*/sources/*.clauses.json
 0
 *.bak
 cases/*/rules/*.bak
+
+# EXCEPT the real Santa Cruz corpus: downloaded-and-OCR'd originals (not regenerable by
+# any script) and their baked extraction (a ~4GB-RSS ingest no cloud builder can repeat).
+# These ARE the case — they ship in git. The blanket excludes above are for synthetic,
+# regenerable corpora only.
+!cases/santacruz/sources/*.pdf
+!cases/santacruz/catalog.json
+!cases/santacruz/search_index.jsonl
