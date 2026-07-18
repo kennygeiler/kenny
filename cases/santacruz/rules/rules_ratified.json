@@ -23,7 +23,7 @@
       "status": "ratified",
       "_scenario": "bereavement leave, Firefighters Local 3535 (Article XIV)",
       "approver": "kenny",
-      "approved_at": "2026-07-17T22:22:54Z"
+      "approved_at": "2026-07-18T14:26:28Z"
     },
     {
       "id": "firefighters_local3535_mou:overtime_premium_rate",
@@ -48,7 +48,56 @@
       },
       "status": "ratified",
       "approver": "kenny",
-      "approved_at": "2026-07-17T22:22:54Z"
+      "approved_at": "2026-07-18T14:26:28Z"
+    },
+    {
+      "id": "chief_officers_mou:bereavement_hours",
+      "kind": "selector",
+      "role": "base",
+      "result_type": "hours",
+      "topic": "bereavement",
+      "when": "True",
+      "compute": "40",
+      "human_readable": "40 hours of paid bereavement leave upon a death in the employee's immediate family (Chief Officers MOU, Bereavement Leave, p.14). Authored by the reviewing analyst against the clause text.",
+      "citation": {
+        "doc_id": "chief_officers_mou",
+        "clause": "Bereavement Leave (p.14)",
+        "page": 14,
+        "bbox": [
+          90.7,
+          575.8,
+          526.7,
+          552.8
+        ]
+      },
+      "status": "ratified",
+      "approver": "kenny",
+      "approved_at": "2026-07-18T14:26:28Z"
+    },
+    {
+      "id": "admin_group_mou:overtime_premium_rate",
+      "kind": "selector",
+      "role": "base",
+      "result_type": "currency",
+      "pay_basis": "hourly",
+      "topic": "overtime",
+      "when": "hours > 0",
+      "compute": "effective_base * 1.5 * hours",
+      "human_readable": "One and one-half times the regular rate of pay for hours worked in excess of the normal schedule (Admin Group MOU, Overtime, p.6). Authored by the reviewing analyst against the clause text.",
+      "citation": {
+        "doc_id": "admin_group_mou",
+        "clause": "Overtime (p.6)",
+        "page": 6,
+        "bbox": [
+          104.4,
+          137.7,
+          509.6,
+          113.8
+        ]
+      },
+      "status": "ratified",
+      "approver": "kenny",
+      "approved_at": "2026-07-18T14:26:28Z"
     }
   ]
 }
