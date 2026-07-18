@@ -509,7 +509,12 @@
     let LAST_FOCUS = null;
     async function viewSource(docId, clause, ruleId) {
       LAST_FOCUS = document.activeElement;
-      const rule = PROPOSED.find(r => r.id === ruleId) || {};
+      // A rule being inspected can live in the review queue OR the ratified library —
+      // the queue is ephemeral, so a library rule must resolve from RATIFIED_RULES
+      // (looking only in PROPOSED rendered an empty drawer and lost the citation page
+      // the clause fallback needs → 404).
+      const rule = PROPOSED.find(r => r.id === ruleId)
+                || RATIFIED_RULES.find(r => r.id === ruleId) || {};
       const body = $('drawerBody');
       $('drawerTitle').textContent = `${rule.topic || ruleId} — ${docId} §${clause}`;
       body.innerHTML = `<div class="card">${ruleBody(rule)}</div>
