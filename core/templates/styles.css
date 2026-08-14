@@ -187,6 +187,30 @@ code {
 .k-live { background: var(--ok); } .k-pending { background: var(--steel); }
 .k-blocked { background: #c2793a; } .k-narrative { background: #b8c2cf; }
 
+/* ---------------- extraction scorecard (OCR_TICKETS.md OCR-3) ----------------
+   One strip per document card: parse-tier badge, counts, and conditional badges.
+   Same AA discipline as the rest of the page — every badge carries a word, never
+   colour alone, and each pairing below meets 4.5:1 on its background. */
+.score {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  margin: 4px 0 6px; font-size: 12px;
+}
+.score-tier { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 9px; }
+.tier-good { background: var(--ok); color: #fff; }                        /* 6.3:1 */
+.tier-amber { background: var(--warnbg); color: var(--warn); border: 1px solid #e3b778; }
+.tier-orange { background: #fff1e6; color: #93430c; border: 1px solid #e0a068; } /* 6.0:1 */
+.tier-bad { background: var(--flagbg); color: var(--flag); border: 1px solid #eec0a6; }
+.score-stat { color: var(--grey); font-weight: 600; }
+.score-badge { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 9px; }
+.score-recovered { background: #f3effa; color: #4c3092; border: 1px solid #c9b8ec; } /* 8.0:1 */
+.score-empty { background: var(--light); color: var(--grey); border: 1px solid var(--line); }
+.score-fail { background: var(--flagbg); color: var(--flag); border: 1px solid #eec0a6; }
+.score-sha {
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
+  background: var(--light); color: var(--steel); padding: 1px 7px;
+  border: 1px solid var(--line); border-radius: 4px;
+}
+
 /* ---------------- state: colour + a word, never colour alone ---------------- */
 .ok { color: var(--ok); font-weight: 700; font-size: 12.5px; }
 .bad { color: var(--flag); font-weight: 700; font-size: 12.5px; }

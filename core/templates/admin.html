@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kenny Admin — contract library, rule review and audit</title>
-  <link rel="stylesheet" href="/static/styles.css?v=5">
+  <link rel="stylesheet" href="/static/styles.css?v=6">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -198,6 +198,31 @@
         </section>`).join('');
     }
 
+    // Extraction scorecard (OCR_TICKETS.md OCR-3): how well the machine READ the
+    // document — parse tier, what kinds of clauses came out, which pages yielded
+    // nothing, which pages the layout-model rescue saved, and the sha binding.
+    function scorecard(d) {
+      const TIER = {docling: ['tier-good', 'docling'],
+                    sidecar: ['tier-amber', 'sidecar'],
+                    'raw-text-fallback': ['tier-orange', 'raw text fallback'],
+                    empty: ['tier-bad', 'empty']};
+      const [cls, word] = TIER[d.parse_source] || ['tier-amber', d.parse_source || 'unknown'];
+      const kinds = d.kinds || {};
+      const rows = kinds['table-row'] || 0;
+      const rec = (d.recovered_pages || []).length;
+      const emp = (d.pages_empty || []).length;
+      const s = n => n === 1 ? '' : 's';
+      return `<p class="score">
+        <span class="score-tier ${cls}" title="Parse tier: how the text was extracted from the PDF">${esc(word)}</span>
+        <span class="score-stat">${d.clauses || 0} clause${s(d.clauses || 0)}</span>
+        <span class="score-stat">${rows} table row${s(rows)}</span>
+        ${rec ? `<span class="score-badge score-recovered" title="docling's layout model classified the page as a Picture; the spans were regrouped into rows from raw geometry">${rec} page${s(rec)} recovered from layout misclassification</span>` : ''}
+        ${emp ? `<span class="score-badge score-empty" title="Nothing was extracted from page${s(emp)} ${esc((d.pages_empty || []).join(', '))}">${emp} empty page${s(emp)}</span>` : ''}
+        ${d.index_error ? `<span class="score-badge score-fail" title="${esc(d.index_error)} — catalogued but absent from search">indexing failed</span>` : ''}
+        ${d.pdf_sha256_short ? `<span class="score-sha" title="SHA-256 binding of the ingested PDF — provenance anchor">${esc(d.pdf_sha256_short)}</span>` : ''}
+      </p>`;
+    }
+
     function docCard(d) {
       const eff = d.effective_start ? `${esc(d.effective_start)} to ${esc(d.effective_end || 'open')}` : null;
       const chips = [['department', d.department], ['unit', d.bargaining_unit],
@@ -236,6 +261,7 @@
           <button type="button" class="ghost small" onclick="openXray('${esc(d.doc_id)}')"
                   title="See every clause the machine extracted, boxed on the page it came from">
             X-ray</button></p>
+        ${scorecard(d)}
         ${d.declared_title && d.declared_title !== d.title
           ? `<p class="muted">Filed in this case as “${esc(d.declared_title)}”.</p>` : ''}
         <p class="chips">${chips}</p>

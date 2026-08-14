@@ -1163,6 +1163,41 @@ def _check_golden(case, rule_dicts: list[dict], golden: dict) -> tuple[bool, dic
                        "expected": golden.get("expected_total"), "actual": None}
 
 
+def _extraction_stats(entry: dict) -> dict:
+    """How well did we READ this document? (OCR_TICKETS.md OCR-3)
+
+    Pure math over one catalog entry — separated from the endpoint so the scorecard
+    arithmetic is testable without the HTTP stack. Returns:
+      kinds           histogram of clause kinds (the catalog omits `kind` for normal
+                      text, so missing/empty counts as "text" — same normalisation as
+                      the X-ray endpoint)
+      pages_empty     pages in 1..page_count from which nothing was extracted
+      recovered_pages pages whose every clause is recovered-* — the layout-model
+                      rescue (docling called the page a Picture; spans were regrouped
+                      into rows from raw geometry)
+      pdf_sha256_short first 12 hex chars of the PDF's sha ("" when not recorded)
+      index_error     passthrough — catalogued but absent from search when set
+    """
+    kinds: dict[str, int] = {}
+    kinds_by_page: dict[int, set] = {}
+    for c in entry.get("clauses") or []:
+        kind = c.get("kind") or "text"
+        kinds[kind] = kinds.get(kind, 0) + 1
+        page = c.get("page")
+        if isinstance(page, int) and page >= 1:
+            kinds_by_page.setdefault(page, set()).add(kind)
+    page_count = entry.get("page_count") or 0
+    return {
+        "kinds": kinds,
+        "pages_empty": [p for p in range(1, page_count + 1) if p not in kinds_by_page],
+        "recovered_pages": sorted(
+            p for p, ks in kinds_by_page.items()
+            if ks <= {"recovered-row", "recovered-text"}),
+        "pdf_sha256_short": (entry.get("pdf_sha256") or "")[:12],
+        "index_error": entry.get("index_error"),
+    }
+
+
 @app.get("/admin/coverage")
 def admin_coverage():
     """How much of each contract has Kenny actually modelled?
@@ -1217,6 +1252,9 @@ def admin_coverage():
             "pending": pending_by_doc.get(did, 0),
             "blocked": blocked_by_doc.get(did, 0),
             "narrative": narrative_by_doc.get(did, 0),
+            # Extraction scorecard (OCR-3): how well was the document READ, as
+            # opposed to how much of it has been modelled.
+            **_extraction_stats(entry),
         })
     return {"documents": docs, "corpus_size": len(case.manifest.get("sources", []))}
 
