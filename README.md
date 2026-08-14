@@ -1,5 +1,8 @@
 # Kenny — Document-Grounded Costing & Policy Engine
 
+**▶ Live demo: <https://kenny-production.up.railway.app>** — no sign-in; chat at `/`,
+ops at `/admin`. Click "Take the tour" on the chat page for a guided click-through.
+
 Kenny answers HR costing and policy questions directly from contract PDFs — with
 **deterministic math**, **clause-level bounding-box citations**, a **human approval
 gate**, and a **tamper-evident audit ledger**. The LLM only reads language and routes
