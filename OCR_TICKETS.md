@@ -8,8 +8,8 @@ viewer can see and trust. Build in numbered order; each ticket is self-contained
 > **STATUS (2026-08-14):** OCR-1 (X-ray, `eeb617d`), OCR-3 (scorecard, `8b23884`),
 > OCR-4 (tier chips, `c71ccc6`), OCR-2 (side-by-side, `8bea6f8`), OCR-5
 > (table X-ray, `e26394e`), OCR-6 (live scan demo, `0d37370`) and OCR-7
-> (confidence capture — page-level, see the ticket for what the pinned docling
-> exposes) are DONE. The backlog is complete.
+> (confidence capture, `f4727bc` — page-level, see the ticket for what the pinned
+> docling exposes) are DONE. The backlog is complete.
 > Known data limitation: the shipped santacruz catalog predates per-row table bboxes,
 > sha recording and per-page OCR confidence — a re-ingest with docling refreshes all
 > three; the X-ray merges shared-bbox rows into one box until then (and, being a
