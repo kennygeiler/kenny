@@ -6,9 +6,9 @@ produces clause-level provenance (1,861 clauses with `page`, `bbox`, `kind`, per
 viewer can see and trust. Build in numbered order; each ticket is self-contained.
 
 > **STATUS (2026-08-14):** OCR-1 (X-ray, `eeb617d`), OCR-3 (scorecard, `8b23884`),
-> OCR-4 (tier chips, `c71ccc6`) and OCR-2 (side-by-side, `8bea6f8`) are DONE.
-> Remaining, in order: OCR-5 (table X-ray), OCR-6 (live scan demo), OCR-7
-> (confidence capture).
+> OCR-4 (tier chips, `c71ccc6`), OCR-2 (side-by-side, `8bea6f8`) and OCR-5
+> (table X-ray, `e26394e`) are DONE.
+> Remaining, in order: OCR-6 (live scan demo), OCR-7 (confidence capture).
 > Known data limitation: the shipped santacruz catalog predates per-row table bboxes
 > and sha recording — a re-ingest with docling refreshes both; the X-ray merges
 > shared-bbox rows into one box until then.
@@ -92,7 +92,7 @@ point: "Compare" button beside X-ray.
 **Accept.** Hovering a paragraph lights its box and vice versa; mismatched OCR text
 is findable by eye in under a minute on any page.
 
-## OCR-5 — Table X-ray
+## OCR-5 — Table X-ray — DONE (`e26394e`)
 **What.** Salary schedule as a *structured table* beside the page: each recovered row
 rendered as an HTML row; clicking one highlights its bbox band on the page image.
 **How.** Filter OCR-1 clause payload to kind=table-row/recovered-row for the page;
