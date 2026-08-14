@@ -206,6 +206,14 @@ def extract_department(prompt: str, departments: list[str]) -> str | None:
         except Exception:
             pass
     p = prompt.lower()
+    # An explicit department NAME governs (TICKETS.md B5). Rank words are ambiguous
+    # across departments — "captain" exists in fire AND police — so "police captain"
+    # must never scope to fire just because the fire cue list contains "captain".
+    for dept in _DEPT_CUES:
+        if dept.replace("-", " ") in p:
+            # Named a department the corpus doesn't cover -> out of scope, not a guess
+            # from the rank word that happened to ride along.
+            return dept if dept in departments else None
     for dept, cues in _DEPT_CUES.items():
         if dept in departments and any(c in p for c in cues):
             return dept
@@ -215,6 +223,35 @@ def extract_department(prompt: str, departments: list[str]) -> str | None:
 # --------------------------------------------------------------------------- #
 # answer_policy — grounded answer composed ONLY from retrieved clauses
 # --------------------------------------------------------------------------- #
+_FIGURE_RE = re.compile(r"\$?\d[\d,]*(?:\.\d+)?")
+
+
+def _figures(text: str) -> set[str]:
+    """Numeric tokens, normalized ($ and thousands separators stripped) so '$1,660.80'
+    in an answer matches '1660.80' in a clause."""
+    return {m.group(0).lstrip("$").replace(",", "") for m in _FIGURE_RE.finditer(text or "")}
+
+
+def _ungrounded_figures(answer: str, passages: list[dict]) -> list[str]:
+    """Figures in the answer that appear NOWHERE in the retrieved evidence.
+
+    The model is instructed to quote, never calculate — but an instruction is not a
+    check (TICKETS.md B2). Asked for a Step C rate, a model can average two steps or
+    annualise an hourly figure and present it with confident citations. Any number the
+    user reads must exist verbatim in a retrieved clause (or be a cited section
+    number); anything else is arithmetic and belongs to the engine.
+    """
+    grounded = set()
+    for p in passages:
+        grounded |= _figures(p.get("text", ""))
+        if p.get("clause"):
+            grounded.add(str(p["clause"]))
+            grounded |= _figures(str(p["clause"]))   # "§A.1" cited as "A.1" -> "1"
+        if p.get("page") is not None:
+            grounded.add(str(p["page"]))
+    return sorted(f for f in _figures(answer) if f not in grounded)
+
+
 def answer_policy(query: str, passages: list[dict], lookup: bool = False) -> dict:
     """Compose a short answer strictly from the retrieved clause text. Never adds
     facts. Falls back to quoting the top passage verbatim when no key.
@@ -254,6 +291,18 @@ def answer_policy(query: str, passages: list[dict], lookup: bool = False) -> dic
                                label="answer_policy" + ("/lookup" if lookup else ""))
             ans = out.get("answer")
             if ans:
+                stray = _ungrounded_figures(ans, passages)
+                if stray:
+                    # The model produced a number the evidence doesn't contain. Do not
+                    # show it: downgrade to the verbatim-quote fallback and record why.
+                    _note("answer_policy", "fallback",
+                          rule="ground-check: model figure(s) not in retrieved clauses",
+                          unverified_figures=stray)
+                    top = passages[0]
+                    return {"answer": f"From {top.get('doc_id')} "
+                                      f"§{top.get('clause') or top.get('page')}: "
+                                      f"{top.get('text')}",
+                            "source": "guarded", "unverified_figures": stray}
                 return {"answer": ans, "source": "claude"}
         except Exception:
             pass
@@ -401,6 +450,27 @@ def _normalize_intent(out: dict, subjects: list[dict], prompt: str = "") -> dict
         resolved = _resolve_classifications(prompt, subjects)
     if resolved:
         out["subjects"] = resolved
+
+    # ECHO-BACK CHECK (TICKETS.md B3). A model-extracted number is a MULTIPLICAND in
+    # the money math, so it must be a number the user actually typed. "hours: 80" for
+    # an "8-hour shift" yields a wrong, fully-cited, snapshot-frozen total — the regex
+    # stub can only echo the prompt, but the model path could invent. Any numeric param
+    # absent from the prompt is stripped and reported for a clarifying question.
+    if out.get("source") == "claude" and prompt:
+        stated = {float(n) for n in re.findall(r"\d+(?:\.\d+)?", prompt)}
+        unverified: dict[str, float] = {}
+        try:
+            h = float(out.get("hours") or 0.0)
+        except (TypeError, ValueError):
+            h = 0.0
+        if h and h not in stated:
+            unverified["hours"] = h
+            out["hours"] = 0.0
+        if unverified:
+            out["unverified_numbers"] = unverified
+            _note("parse_intent", "fallback",
+                  rule="echo-back: model-extracted number absent from the question",
+                  unverified=unverified)
     return out
 
 

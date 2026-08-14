@@ -230,6 +230,29 @@ def _is_rate_row(hit: dict) -> bool:
     return "|" in text and "$" in text
 
 
+def _dept_scope(case, cat, dept) -> list[str]:
+    """Candidate documents for a department, restricted to what is actually INGESTED.
+
+    The ONE scoping helper for every retrieval path (TICKETS.md B1). It encodes two
+    hard-won rules together so no path can drift with only one of them again:
+      1. case.yaml declares the intended corpus; the catalog holds what really parsed.
+         A document with no clauses in the index is a plan, not a candidate.
+      2. Callers must treat an EMPTY scope as "nothing to search" — never pass [] to
+         backend.search, which reads it as "no filter" and would leak every other
+         department's contracts into the answer.
+    """
+    ingested = {d["doc_id"] for d in cat.documents()}
+    return [d for d in case.docs_for_department(dept) if d in ingested]
+
+
+_ASKS_EVERYONE_RE = re.compile(r"\b(all|every|each|entire|whole|everyone|roster)\b", re.I)
+
+
+def _clarify(qid: str, prompt: str, question: str, options: list | None = None) -> dict:
+    return {"query_id": qid, "mode": "clarify", "prompt_echo": prompt,
+            "question": question, "options": options or []}
+
+
 def _policy_answer(case, led, qid: str, prompt: str, department: str | None = None,
                    lookup: bool = False) -> dict:
     """Policy Q&A over a multi-department CORPUS.
@@ -255,15 +278,11 @@ def _policy_answer(case, led, qid: str, prompt: str, department: str | None = No
                                      "known_departments": departments},
                actor="chat", query_id=qid)
 
-    # 2. Candidate shortlist from metadata — but only documents that have actually been
-    #    INGESTED. docs_for_department reads case.yaml, which declares the whole intended
-    #    corpus (13); the catalog holds what has really been parsed. Shortlisting the
-    #    declared set made a corpus with one uploaded document report "searched 13 of 13,
-    #    12 not used" — naming 12 contracts that do not exist yet as "considered". A
-    #    document with no clauses in the index cannot answer anything; it is not a
-    #    candidate, it is a plan.
+    # 2. Candidate shortlist from metadata — via the one shared scoping helper (see
+    #    _dept_scope for why declared-vs-ingested and the empty-scope guard must always
+    #    travel together).
     ingested = {d["doc_id"] for d in cat.documents()}
-    scope = [d for d in case.docs_for_department(dept) if d in ingested]
+    scope = _dept_scope(case, cat, dept)
     led.append("retrieval.candidates",
                {"department": dept, "candidate_docs": scope, "corpus_size": len(ingested),
                 "declared": len(case.manifest.get("sources", []))},
@@ -344,8 +363,12 @@ def _entitlement_answer(case, led, qid: str, prompt: str,
     backend = _backend(case)
     departments = case.departments()
     dept = department or llm.extract_department(prompt, departments)
-    scope = case.docs_for_department(dept)
-    hits = backend.search(prompt, doc_ids=scope, k=6)
+    # Same scoping discipline as _policy_answer (TICKETS.md B1). This path used to scope
+    # by the DECLARED corpus and pass an empty list straight to search — which the
+    # backend reads as "no filter" — so a department with no ingested documents was
+    # answered from every OTHER department's contracts.
+    scope = _dept_scope(case, _catalog(case), dept)
+    hits = backend.search(prompt, doc_ids=scope, k=6) if scope else []
     led.append("entitlement.retrieval",
                {"department": dept, "candidates": len(scope),
                 "hits": [{k: h[k] for k in ("doc_id", "clause", "score")} for h in hits]},
@@ -358,6 +381,10 @@ def _entitlement_answer(case, led, qid: str, prompt: str,
              and (r.citation.doc_id, str(r.citation.clause)) in hit_keys]
     subjects_all = case.subjects()
     params = llm.parse_intent(prompt, _extraction(case), subjects_all)
+    if params.get("unverified_numbers"):
+        return _clarify(qid, prompt,
+                        "I read a number out of that question that it doesn't actually "
+                        "state — can you restate it with the amount spelled out?")
     named = set(params.get("subjects") or [])
     subjects = [s for s in subjects_all if s.get("name") in named]
 
@@ -487,10 +514,34 @@ async def _chat(body: dict, qid: str):
     params = llm.parse_intent(prompt, _extraction(case), subjects_all)
     led.append("llm.parse_intent", params, actor="chat", query_id=qid)
 
-    # 2. Select the subjects named in the prompt (all if none matched), and derive
-    #    their bargaining unit(s) + the shift date — the governance keys.
+    # A model-extracted number the question doesn't contain never reaches the engine
+    # (TICKETS.md B3) — ask, don't multiply by it.
+    unverified = params.get("unverified_numbers")
+    if unverified:
+        led.append("costing.clarify",
+                   {"reason": "model-extracted number absent from the question",
+                    "unverified": unverified}, actor="chat", query_id=qid)
+        return _clarify(qid, prompt,
+                        f"I read {unverified.get('hours')} hours out of that, but the "
+                        "question doesn't state that number. How long is the shift?")
+
+    # 2. Select the subjects named in the prompt, and derive their bargaining unit(s)
+    #    + the shift date — the governance keys. A question that names NOBODY is asked
+    #    who it is for (TICKETS.md B4) — silently costing the entire roster turned a
+    #    vague question into one large confident total.
     named = set(params.get("subjects") or [])
-    subjects = [s for s in subjects_all if s.get("name") in named] or subjects_all
+    subjects = [s for s in subjects_all if s.get("name") in named]
+    if not subjects:
+        if _ASKS_EVERYONE_RE.search(prompt):
+            subjects = subjects_all
+        else:
+            led.append("costing.clarify", {"reason": "no subject named"},
+                       actor="chat", query_id=qid)
+            examples = ", ".join(str(s.get("name")) for s in subjects_all[:3])
+            return _clarify(qid, prompt,
+                            "Who is this for? Name a classification (e.g. "
+                            f"{examples}) — or say 'all classifications' to cost the "
+                            "whole roster.")
     units = sorted({s.get("bargaining_unit") for s in subjects if s.get("bargaining_unit")})
     date_iso = governance.parse_date(params.get("date"), default_year=DEFAULT_YEAR)
     led.append("data.read",
