@@ -1,80 +1,82 @@
-# Deploying Kenny to a shared link
+# Deploying Kenny to a shared link (Railway)
 
-**What this is for.** Putting the prototype behind a URL so a handful of named people can
-try it. It is **not** a production posture — see "What this deploy is not" below, and say
-so out loud when you share the link.
+**What this is for.** Putting the prototype behind a URL so people can try it. It is
+**not** a production posture — see "What this deploy is not" below, and say so out loud
+when you share the link.
 
-## What the deploy adds over `uvicorn core.app:app`
+**Default posture: OPEN.** No sign-in anywhere — chat, documents, and `/admin` all serve
+without credentials, exactly like a local run. Two protections stay on regardless:
 
-| Blocker | Fix |
-|---|---|
-| `/admin` open to anyone with the URL | HTTP Basic auth, **two passwords, enforced per-path** — viewer opens chat + documents; only admin opens `/admin/*` (ratify gate, uploads, ledger). `core/auth.py` |
-| Every visitor spends your Anthropic budget | Per-client rate limit on `POST /chat` (default 20/min; real client IP via `Fly-Client-IP` on Fly) |
-| Online password guessing | Exponential backoff after repeated failed logins, attempts ledgered |
-| Cross-site request forgery | State-changing requests from a foreign `Origin` are refused |
-| Ledger rewritable by anyone with disk access | Events HMAC-signed with `KENNY_LEDGER_KEY` (kept in the secret store, never on the volume); head hash anchored to platform logs |
-| Ledger corrupts under concurrent writes | Serialised append (in-process lock + `flock`) — `core/ledger.py` |
-| Ledger dies on redeploy | Persistent volume at `/data`, seeded from the image on first boot |
-| 4-minute cold-start ingest | Corpus + models baked at **build** time — `scripts/prepare_deploy.py` |
-| Multi-worker forks the audit trail | `--workers 1`, `min_machines_running = 1` |
-| A demo link reads as a product | Standing `KENNY_BANNER` on both surfaces |
+- **Chat rate limit** (default 20/min per client) — an open `/chat` is the operator's
+  Anthropic budget, so removing auth never removes the spend cap.
+- **No API key by default.** The app runs end-to-end on deterministic fallbacks. Add
+  `ANTHROPIC_API_KEY` only once you accept that *anyone with the URL* can spend it
+  (rate-limited, but public).
 
-## Deploy (Fly.io)
+Be aware of what open means here: anyone with the URL can ratify rules, upload/replace
+corpus PDFs, and read the ledger. Fine for a demo corpus; not fine the day real
+decisions live on the volume. To lock it back down, set `KENNY_REQUIRE_AUTH=1` plus
+`KENNY_VIEWER_PASSWORD`, `KENNY_ADMIN_PASSWORD`, and `KENNY_LEDGER_KEY` — the app
+refuses to boot half-configured, the viewer/admin split is enforced per-path, and the
+audit ledger becomes HMAC-signed.
 
-```sh
-fly launch --no-deploy --copy-config      # creates the app from fly.toml; keep the name
-fly volumes create kenny_data --size 3 --region sjc
+## Deploy (Railway)
 
-# Secrets are set OUT of band and never enter the image (.dockerignore excludes .env).
-fly secrets set ANTHROPIC_API_KEY=...        # paste it yourself; it is never echoed
-fly secrets set KENNY_VIEWER_PASSWORD="$(openssl rand -base64 18)"
-fly secrets set KENNY_ADMIN_PASSWORD="$(openssl rand -base64 18)"
-fly secrets set KENNY_LEDGER_KEY="$(openssl rand -base64 32)"   # audit-chain HMAC key
-fly secrets list                             # names only; read the values from your manager
-
-fly deploy --remote-only                  # no local Docker needed; ~15 min first build
-fly open
+```bash
+railway init -n kenny          # once: create the project (or `railway link`)
+railway volume add -m /data    # persistent case tree: ledger, catalog, ratified rules
+railway up --detach            # builds the Dockerfile (~15 min first time: torch + models)
+railway domain                 # mint the public URL
 ```
 
-`KENNY_REQUIRE_AUTH=1` is baked into the image: **if either password or the ledger HMAC
-key is missing the app refuses to boot** rather than quietly serving the admin panel to
-the internet (or an audit trail anyone with the disk could rewrite). Verified by
-`tests/test_auth.py::test_deploy_refuses_to_start_without_passwords` and
-`::test_deploy_refuses_to_start_without_ledger_key`.
+The image bakes the parsed Santa Cruz corpus and model weights at build time
+(`scripts/prepare_deploy.py` refuses to ship an image whose known-answer scenarios
+fail). First boot seeds `/data` from the image; after that the volume wins, so
+ratifications and the ledger survive redeploys. Railway mounts volumes root-owned —
+the entrypoint chowns `/data` and immediately drops to the unprivileged `kenny` user.
 
-**Render / Railway** work the same way: same Dockerfile, mount a disk at `/data`, set the
-same secrets, force one instance.
+Optional variables (`railway variables set KEY=value`):
+
+| Variable | Effect |
+|---|---|
+| `ANTHROPIC_API_KEY` | Turns on live Claude for routing/drafting (public spend — see above) |
+| `KENNY_CHAT_RATE_LIMIT` | Chat requests per client per minute (default 20) |
+| `KENNY_BANNER` | Standing banner text on both surfaces |
+| `KENNY_REQUIRE_AUTH=1` + 3 secrets | Re-enables the locked posture described above |
 
 ## Checks after deploy
 
-```sh
-curl -sf https://<app>/healthz                      # {"status":"ok"}
-curl -so /dev/null -w '%{http_code}\n' https://<app>/           # 401
-curl -so /dev/null -w '%{http_code}\n' -u u:$VIEWER https://<app>/admin   # 403 (viewer ≠ admin)
+```bash
+curl -sf https://<app>.up.railway.app/healthz     # {"status":"ok"}
 ```
-`/healthz` runs `verify()`, so a broken chain shows up as an unhealthy instance instead
-of as a wrong answer discovered months later. (Pass/fail only — the tamper detail is on
-`/admin/ledger`, behind the admin credential.)
+
+`/healthz` runs the ledger `verify()`, so a broken chain shows up as an unhealthy
+instance instead of as a wrong answer discovered months later.
 
 ## Operating it
 
-- **Ledger backup:** `fly ssh console -C "cat /data/cases/santacruz/ledger.jsonl" > ledger.bak`.
-  The volume is a single disk with no replication — treat it as losable.
-- **Rule changes are on the volume, not in git.** Ratifying through the hosted admin panel
+- **Ledger backup:** `railway ssh "cat /data/cases/santacruz/ledger.jsonl" > ledger.bak`.
+  Single disk, no replication — treat it as losable.
+- **Rule changes live on the volume, not in git.** Ratifying through the hosted admin
   writes `/data/.../rules_ratified.json`, which the repo never sees. Pull it back if you
   want to keep it.
-- **Cost:** one always-on `shared-cpu-2x`/2GB machine, plus Anthropic usage per chat.
-  `auto_stop_machines = "suspend"` idles it between sessions.
-- **Rotate the passwords** after a demo; they are shared secrets with no revocation.
+- **Reseed** (replace the volume's case with the image's): set `KENNY_SEED_FORCE=1` and
+  `KENNY_SEED_FORCE_CONFIRM=yes`, redeploy, then unset both. The old case is archived
+  beside it on the volume, never deleted.
 
 ## What this deploy is **not**
 
 Do not describe it as production or as 508-conformant.
 
-- **Basic auth, not identity.** No accounts, no per-user attribution, no revocation. The
-  ledger records `actor: "admin"` — *which* admin is unknowable. Real use needs SSO + RBAC,
-  because "who ratified this rule" is the question a union will ask.
-- **One machine, no failover.** A single volume, no replication, no backup schedule.
+- **Open by default.** No identity, no attribution: the ledger records `actor: "admin"`
+  for whoever clicked. Real use needs the locked posture at minimum, then SSO + RBAC.
+- **One instance, one volume.** No failover, no replication, no backup schedule.
 - **Rate limit is per-process.** Caps API spend and stops a runaway loop; not an attacker.
-- **Synthetic corpus.** Everything on the link is illustrative. Hence the banner.
+- **Synthetic-ish corpus.** Everything on the link is illustrative. Hence the banner.
 - **Unaudited accessibility** (PRD §5.1a): built to WCAG 2.1 AA patterns, no VPAT.
+
+## Fly.io (archived)
+
+The original take-home deploy targeted Fly; those assets live in `archive/fly/` with
+notes. The Fly app that exists in the account was never successfully deployed and holds
+no data.

@@ -155,6 +155,24 @@ class FailureThrottle:
             self._misses.pop(key, None)
 
 
+class RateLimitOnlyMiddleware(BaseHTTPMiddleware):
+    """Open mode: no passwords anywhere, every page serves without credentials — but
+    POST /chat still spends the operator's Anthropic budget, so the per-client rate
+    limit stays on. Removing auth must never mean removing the spend cap."""
+
+    def __init__(self, app, chat_limit: int):
+        super().__init__(app)
+        self.limiter = RateLimiter(chat_limit)
+
+    async def dispatch(self, request, call_next):
+        if request.url.path == "/chat" and request.method == "POST":
+            if not self.limiter.allow(_client_ip(request)):
+                return JSONResponse(
+                    {"error": "Too many questions in the last minute. Wait a moment "
+                              "and ask again."}, status_code=429)
+        return await call_next(request)
+
+
 class AccessMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, viewer_pw: str, admin_pw: str, chat_limit: int,
                  ledger_factory=None):
@@ -240,6 +258,7 @@ def install(app, ledger_factory=None) -> None:
     viewer_pw = os.environ.get("KENNY_VIEWER_PASSWORD", "")
     admin_pw = os.environ.get("KENNY_ADMIN_PASSWORD", "")
     required = os.environ.get("KENNY_REQUIRE_AUTH", "").lower() in ("1", "true", "yes")
+    limit = int(os.environ.get("KENNY_CHAT_RATE_LIMIT", "20"))
 
     if not (viewer_pw and admin_pw):
         if required:
@@ -249,7 +268,9 @@ def install(app, ledger_factory=None) -> None:
                 "the admin panel, the rule-ratify gate and the API key's spend to "
                 "anyone with the URL."
             )
-        return  # local dev: open, as before
+        # OPEN mode (the default): no sign-in anywhere. The chat spend cap stays.
+        app.add_middleware(RateLimitOnlyMiddleware, chat_limit=limit)
+        return
 
     if required and not os.environ.get("KENNY_LEDGER_KEY", "").strip():
         raise RuntimeError(
@@ -266,6 +287,5 @@ def install(app, ledger_factory=None) -> None:
             "collapses the reviewer/asker separation the review gate depends on (PRD §2)."
         )
 
-    limit = int(os.environ.get("KENNY_CHAT_RATE_LIMIT", "20"))
     app.add_middleware(AccessMiddleware, viewer_pw=viewer_pw, admin_pw=admin_pw,
                        chat_limit=limit, ledger_factory=ledger_factory)

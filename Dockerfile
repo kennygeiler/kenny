@@ -28,11 +28,13 @@ RUN python -m scripts.prepare_deploy cases/santacruz
 # --------------------------------------------------------------------------- #
 FROM python:3.11-slim
 
+# Auth is OFF by default — the app serves openly, like a local run. To lock a deploy,
+# set KENNY_REQUIRE_AUTH=1 plus the three KENNY_* secrets (see core/auth.py); the app
+# then refuses to boot half-configured. The chat rate limit is active either way.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     HF_HOME=/opt/models \
-    CASE_NAME=santacruz \
-    KENNY_REQUIRE_AUTH=1
+    CASE_NAME=santacruz
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libgl1 libglib2.0-0 \

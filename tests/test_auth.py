@@ -51,6 +51,16 @@ def _basic(pw: str) -> dict:
 def test_no_passwords_leaves_app_open_for_local_dev(monkeypatch):
     c = _app(monkeypatch)
     assert c.get("/").status_code == 200
+    assert c.get("/admin/ledger").status_code == 200   # open mode: no sign-in anywhere
+
+
+def test_open_mode_still_rate_limits_chat(monkeypatch):
+    """Removing auth must never remove the spend cap: an open deploy's /chat is the
+    operator's Anthropic budget, and a loop must still hit a wall."""
+    c = _app(monkeypatch, KENNY_CHAT_RATE_LIMIT="3")
+    assert [c.post("/chat").status_code for _ in range(3)] == [200, 200, 200]
+    assert c.post("/chat").status_code == 429
+    assert c.get("/").status_code == 200               # reading is not rate limited
 
 
 def test_deploy_refuses_to_start_without_passwords(monkeypatch):
