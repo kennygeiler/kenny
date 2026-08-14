@@ -862,7 +862,10 @@ def doc_clauses(doc_id: str, page: int = 1):
 
     `kind` is normalised here — the catalog omits it for normal text, but the overlay
     colour-codes by kind and an absent key would make every consumer re-implement the
-    default.
+    default. Likewise `low_confidence` (OCR-7): the catalog stamps it only on clauses
+    from pages docling's OCR scored below LOW_OCR_CONFIDENCE, and the endpoint
+    normalises it to an always-present boolean plus a page-level `ocr_confidence`
+    score (null on pages that were never OCR'd — every digital page).
     """
     case = _case()
     pdf_path = _resolve_pdf(case, doc_id)
@@ -872,11 +875,17 @@ def doc_clauses(doc_id: str, page: int = 1):
     if dims is None:
         return JSONResponse({"error": "page metrics unavailable"}, status_code=503)
     page, page_count, width, height = dims
+    cat = _catalog(case)
     clauses = [{"clause": c.get("clause", ""), "kind": c.get("kind") or "text",
-                "page": page, "bbox": c.get("bbox", []), "text": c.get("text", "")}
-               for c in _catalog(case).clauses(doc_id) if c.get("page") == page]
+                "page": page, "bbox": c.get("bbox", []), "text": c.get("text", ""),
+                "low_confidence": bool(c.get("low_confidence"))}
+               for c in cat.clauses(doc_id) if c.get("page") == page]
+    entry = cat.get(doc_id) or {}
+    conf = (entry.get("page_confidence") or {}).get(str(page))
     return {"doc_id": doc_id, "page": page, "page_count": page_count,
-            "width": width, "height": height, "clauses": clauses}
+            "width": width, "height": height, "clauses": clauses,
+            "ocr_confidence": conf,
+            "low_confidence": conf is not None and conf < ingest.LOW_OCR_CONFIDENCE}
 
 
 # --------------------------------------------------------------------------- #
@@ -1027,6 +1036,9 @@ def _upload_worker(job_id: str, dest: str, doc_id: str, title: str, fname: str):
             "doc_id": doc_id, "title": title, "parse_source": entry["parse_source"],
             "tags": entry["tags"], "summary": entry["summary"],
             "clauses": len(entry["clauses"]), "proposed_rules": [],
+            # OCR-7: a freshly scanned upload should announce shaky OCR immediately,
+            # with the same signal its scorecard row will carry in the document list.
+            "low_confidence_pages": _extraction_stats(entry)["low_confidence_pages"],
             "warning": _ingest_warning(entry),
             "note": ("Document read and indexed — ask about it in chat right away. "
                      "Costing rules are drafted per scenario on the Verification tab.")}
@@ -1281,6 +1293,9 @@ def _extraction_stats(entry: dict) -> dict:
                       into rows from raw geometry)
       pdf_sha256_short first 12 hex chars of the PDF's sha ("" when not recorded)
       index_error     passthrough — catalogued but absent from search when set
+      low_confidence_pages  pages whose docling OCR score fell below
+                      LOW_OCR_CONFIDENCE (OCR-7) — [] for digital documents and for
+                      catalogs ingested before confidence capture existed
     """
     kinds: dict[str, int] = {}
     kinds_by_page: dict[int, set] = {}
@@ -1299,6 +1314,9 @@ def _extraction_stats(entry: dict) -> dict:
             if ks <= {"recovered-row", "recovered-text"}),
         "pdf_sha256_short": (entry.get("pdf_sha256") or "")[:12],
         "index_error": entry.get("index_error"),
+        "low_confidence_pages": sorted(
+            int(p) for p, s in (entry.get("page_confidence") or {}).items()
+            if isinstance(s, (int, float)) and s < ingest.LOW_OCR_CONFIDENCE),
     }
 
 

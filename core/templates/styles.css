@@ -205,6 +205,7 @@ code {
 .score-recovered { background: #f3effa; color: #4c3092; border: 1px solid #c9b8ec; } /* 8.0:1 */
 .score-empty { background: var(--light); color: var(--grey); border: 1px solid var(--line); }
 .score-fail { background: var(--flagbg); color: var(--flag); border: 1px solid #eec0a6; }
+.score-lowconf { background: #fdf3e2; color: #7b4a12; border: 1px solid #e3b778; } /* 7.9:1 */
 .score-sha {
   font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
   background: var(--light); color: var(--steel); padding: 1px 7px;
@@ -313,6 +314,15 @@ figure { margin: 0; }
 .xbox.xk-recovered:hover, .xbox.xk-recovered:focus, .xbox.xk-recovered.active { background: rgba(107, 70, 193, .36); }
 .xk-page { border-color: #718096; background: rgba(113, 128, 150, .16); }
 .xbox.xk-page:hover, .xbox.xk-page:focus, .xbox.xk-page.active { background: rgba(113, 128, 150, .34); }
+/* Low OCR confidence (OCR-7): an amber HATCH layered over the kind fill, so a box
+   keeps its kind colour and additionally says "docling's OCR was unsure on this
+   page". A hatch, not a second flat tint — table rows are already amber, and a flat
+   amber wash would be indistinguishable from them. The tooltip and the count strip
+   carry the words; the hatch is the at-a-glance marker. */
+.xbox.xlow, .xlegend i.xlow {
+  background-image: repeating-linear-gradient(135deg,
+    rgba(183, 121, 31, .38) 0 4px, transparent 4px 9px);
+}
 .xbox .xtip {
   display: none; position: absolute; left: 0; top: 100%; margin-top: 3px;
   background: #16202e; color: #fff; font-size: 12px; line-height: 1.45;
@@ -345,6 +355,11 @@ figure { margin: 0; }
 .xtext .xrow.xk-table:hover, .xtext .xrow.xk-table.active { background: rgba(183, 121, 31, .15); }
 .xtext .xrow.xk-recovered:hover, .xtext .xrow.xk-recovered.active { background: rgba(107, 70, 193, .15); }
 .xtext .xrow.xk-page:hover, .xtext .xrow.xk-page.active { background: rgba(113, 128, 150, .13); }
+/* Low OCR confidence (OCR-7): the row rests on an amber tint (unlike the kind
+   colours, which only appear on hover — the reader must see the warning without
+   pointing at anything); the hover/active kind tints above still win over it,
+   carrying one more class/pseudo-class of specificity. */
+.xtext .xrow.xlow, .xtable tr.xlow { background: #fdf3e2; }
 .xdot { flex: none; width: 10px; height: 10px; border: 1px solid; border-radius: 50%; margin-top: 5px; }
 .xrow-body { min-width: 0; overflow-wrap: anywhere; }
 .xrow-no { font-weight: 600; color: var(--navy); }

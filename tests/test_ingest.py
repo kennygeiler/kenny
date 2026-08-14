@@ -58,8 +58,9 @@ def test_missing_file_is_a_hard_error(tmp_path):
 def test_raw_text_tier_extracts_pages(mini_pdf, monkeypatch):
     # Force past docling and the sidecar so tier 3 is what runs.
     monkeypatch.setattr(ingest, "_parse_with_docling", lambda p, d: None)
-    clauses, text, source = parse_pdf(mini_pdf, "mini")
+    clauses, text, source, page_conf = parse_pdf(mini_pdf, "mini")
     assert source == "raw-text-fallback"
+    assert page_conf == {}                        # no OCR ran, no confidence to report
     assert len(clauses) == 2                      # one per page
     assert clauses[0]["page"] == 1 and clauses[1]["page"] == 2
     assert "Holiday Premium" in text
@@ -69,16 +70,16 @@ def test_raw_text_tier_extracts_pages(mini_pdf, monkeypatch):
 
 def test_scan_pdf_yields_empty_not_garbage(scan_pdf, monkeypatch):
     monkeypatch.setattr(ingest, "_parse_with_docling", lambda p, d: None)
-    clauses, text, source = parse_pdf(scan_pdf, "scan")
+    clauses, text, source, page_conf = parse_pdf(scan_pdf, "scan")
     assert source == "empty"
-    assert clauses == [] and text == ""
+    assert clauses == [] and text == "" and page_conf == {}
 
 
 @pytest.mark.skipif(not os.environ.get("KENNY_TEST_OCR"),
                     reason="set KENNY_TEST_OCR=1 to run the in-band docling OCR tier "
                            "(downloads models, takes minutes)")
 def test_docling_ocr_reads_a_scan_in_band(scan_pdf):
-    clauses, text, source = parse_pdf(scan_pdf, "scan")
+    clauses, text, source, _ = parse_pdf(scan_pdf, "scan")
     assert source == "docling"
     assert "Holiday" in text
 
@@ -99,7 +100,7 @@ def test_bound_sidecar_is_used(mini_pdf, monkeypatch):
     monkeypatch.setattr(ingest, "_parse_with_docling", lambda p, d: None)
     _sidecar_for(mini_pdf, [{"clause": "9.1", "text": "sidecar text", "page": 1,
                              "bbox": [1, 2, 3, 4]}])
-    clauses, _, source = parse_pdf(mini_pdf, "mini")
+    clauses, _, source, _ = parse_pdf(mini_pdf, "mini")
     assert source == "sidecar"
     assert clauses[0]["text"] == "sidecar text"
 
@@ -110,7 +111,7 @@ def test_unbound_sidecar_is_ignored(mini_pdf, monkeypatch):
     monkeypatch.setattr(ingest, "_parse_with_docling", lambda p, d: None)
     _sidecar_for(mini_pdf, [{"clause": "6.6", "text": "stale", "page": 9}],
                  sha="0" * 64)
-    clauses, _, source = parse_pdf(mini_pdf, "mini")
+    clauses, _, source, _ = parse_pdf(mini_pdf, "mini")
     assert source == "raw-text-fallback"
     assert all(c["text"] != "stale" for c in clauses)
     assert _load_sidecar(mini_pdf) is None

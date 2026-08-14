@@ -7,11 +7,14 @@ viewer can see and trust. Build in numbered order; each ticket is self-contained
 
 > **STATUS (2026-08-14):** OCR-1 (X-ray, `eeb617d`), OCR-3 (scorecard, `8b23884`),
 > OCR-4 (tier chips, `c71ccc6`), OCR-2 (side-by-side, `8bea6f8`), OCR-5
-> (table X-ray, `e26394e`) and OCR-6 (live scan demo, `0d37370`) are DONE.
-> Remaining: OCR-7 (confidence capture).
-> Known data limitation: the shipped santacruz catalog predates per-row table bboxes
-> and sha recording — a re-ingest with docling refreshes both; the X-ray merges
-> shared-bbox rows into one box until then.
+> (table X-ray, `e26394e`), OCR-6 (live scan demo, `0d37370`) and OCR-7
+> (confidence capture — page-level, see the ticket for what the pinned docling
+> exposes) are DONE. The backlog is complete.
+> Known data limitation: the shipped santacruz catalog predates per-row table bboxes,
+> sha recording and per-page OCR confidence — a re-ingest with docling refreshes all
+> three; the X-ray merges shared-bbox rows into one box until then (and, being a
+> digital-text corpus, santacruz will correctly show no confidence markings even
+> after re-ingest).
 
 Shared data facts (read before building):
 - `cases/<case>/catalog.json` — per doc: `parse_source` (`docling` | `sidecar` |
@@ -110,7 +113,7 @@ display. Link straight into the new doc's X-ray on completion.
 **Accept.** Uploading `tests`' scan fixture (PIL image-PDF) shows the staged
 progress and lands in X-ray with whatever tier extracted it.
 
-## OCR-7 — Confidence-aware highlighting (last; needs new data)
+## OCR-7 — Confidence-aware highlighting (last; needs new data) — DONE (page-level)
 **What.** Low-confidence OCR tokens tinted amber in X-ray tooltips and quoted
 answers, so a reader knows which characters the OCR was unsure about.
 **How.** Requires capturing per-cell/word confidence from docling's OCR output at
@@ -119,3 +122,25 @@ ingest (not currently recorded) — extend `_parse_with_docling` to store
 the pinned docling version exposes before committing to schema.
 **Accept.** A deliberately blurry scan fixture shows amber spans; digital-text
 documents show none.
+**Built (what the pinned docling actually allows).** docling 2.113.0 exposes OCR
+confidence per PAGE, not per token: `result.confidence` is a `ConfidenceReport`
+whose `pages[n].ocr_score` is a float in (0, 1] on OCR'd pages and NaN on pages
+with a digital text layer (verified by probing real conversions; `page.cells` is
+empty once the pipeline finishes, so there is no per-word surface to read). The
+ticket's per-character amber spans are therefore not possible on this pin — the
+shipped granularity is the page:
+- Ingest records `page_confidence` ({page: ocr_score}) on the catalog entry and
+  stamps `low_confidence: true` on every clause from a page scoring below
+  `ingest.LOW_OCR_CONFIDENCE` (0.9 — docling's own EXCELLENT cutoff; probe: a
+  clean scan OCRs at ~0.96 with correct text, a mildly blurred one at ~0.85 with
+  visibly garbled text). The flag also travels into index chunks, so citation
+  surfaces can adopt it later without re-ingesting.
+- `/doc/{id}/clauses` carries per-clause `low_confidence` plus page-level
+  `ocr_confidence`/`low_confidence`; X-ray boxes and Compare rows/table rows wear
+  an amber hatch/tint with a "low OCR confidence on this page" tooltip, the count
+  strip names the score, and the scorecard + upload result gain an amber
+  "low OCR confidence" badge listing the pages. Digital documents (NaN ocr_score)
+  record nothing and show nothing.
+If a docling upgrade ever exposes word-level confidence, the seam is
+`_ocr_page_confidence()` in core/ingest.py plus the already-plumbed
+`low_confidence` clause field.

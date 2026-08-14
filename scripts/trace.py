@@ -44,8 +44,9 @@ def main():
         print(f"    file: {pdf}")
 
         head("I.1", "docling parse  →  clauses + bounding boxes")
-        clauses, text, source = ingest.parse_pdf(pdf, src["id"])
-        print(f"    parser: {source}   clauses extracted: {len(clauses)}")
+        clauses, text, source, page_conf = ingest.parse_pdf(pdf, src["id"])
+        print(f"    parser: {source}   clauses extracted: {len(clauses)}"
+              + (f"   OCR confidence: {page_conf}" if page_conf else ""))
         for c in clauses[:4]:
             box = c.get("bbox")
             print(f"      · §{c.get('clause') or '—':5} page {c.get('page')}  bbox {box}")

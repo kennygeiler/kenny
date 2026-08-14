@@ -70,7 +70,8 @@ def test_sha_short_and_index_error_passthrough():
 def test_degenerate_entry_no_sha_no_clauses_no_pages():
     stats = _extraction_stats({"doc_id": "empty"})
     assert stats == {"kinds": {}, "pages_empty": [], "recovered_pages": [],
-                     "pdf_sha256_short": "", "index_error": None}
+                     "pdf_sha256_short": "", "index_error": None,
+                     "low_confidence_pages": []}
 
 
 def test_every_page_empty_when_nothing_extracted():

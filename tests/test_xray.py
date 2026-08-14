@@ -87,6 +87,6 @@ def test_admin_page_ships_the_table_xray(client):
     assert "function tableModel(" in html, "majority-table detection + row-text parsing"
     assert "renderXTable(" in html and 'class="xtable"' in html
     assert "table page —" in html, "count-strip mode indicator"
-    assert "styles.css?v=10" in html
+    assert "styles.css?v=11" in html
     css = c.get("/static/styles.css").text
     assert ".xtable" in css and ".xtable-wrap" in css

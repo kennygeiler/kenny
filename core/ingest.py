@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 from typing import Any
@@ -37,8 +38,26 @@ def _sidecar_path(pdf_path: str) -> str:
     return base + ".clauses.json"
 
 
-def parse_pdf(pdf_path: str, doc_id: str) -> tuple[list[dict], str, str]:
-    """Return (clauses, full_text, source).
+# The line below which a page's OCR output is flagged "low confidence" (OCR-7).
+# 0.9 is docling's own QualityGrade cutoff for EXCELLENT (base_models._score_to_grade).
+# Probed against this pinned docling (2.113.0): a clean generated scan OCRs at ~0.96
+# with every word correct, while the same page under a mild Gaussian blur scores ~0.85
+# and the text is visibly garbled ("Hotiday Pnemium Pey" for "Holiday Premium Pay") —
+# so "anything below EXCELLENT" is the honest line, not an arbitrary one.
+LOW_OCR_CONFIDENCE = 0.9
+
+
+def parse_pdf(pdf_path: str, doc_id: str) -> tuple[list[dict], str, str, dict[int, float]]:
+    """Return (clauses, full_text, source, page_confidence).
+
+    page_confidence maps page number -> docling's per-page OCR confidence score
+    (OCR_TICKETS.md OCR-7), present ONLY for pages the OCR engine actually read.
+    Digital pages report no ocr_score (docling leaves it NaN), so a born-digital
+    document yields {} — which is what keeps confidence markings off documents whose
+    text was never OCR'd. Non-docling tiers have no confidence to report and also
+    return {}. Every clause from a page scoring below LOW_OCR_CONFIDENCE is stamped
+    `low_confidence: True` so each downstream surface (X-ray, Compare, scorecard)
+    can warn without re-deriving the threshold.
 
     Tiers, because a document that ingests as EMPTY is worse than one that ingests
     roughly: it looks fine in the catalog and is silently unanswerable.
@@ -65,22 +84,27 @@ def parse_pdf(pdf_path: str, doc_id: str) -> tuple[list[dict], str, str]:
             f"disk — upload it via Admin → Upload, or place the file and re-ingest."
         )
 
-    clauses = _parse_with_docling(pdf_path, doc_id)
-    if clauses:
+    parsed = _parse_with_docling(pdf_path, doc_id)
+    if parsed:
+        clauses, page_confidence = parsed
+        low = {p for p, s in page_confidence.items() if s < LOW_OCR_CONFIDENCE}
+        for c in clauses:
+            if c.get("page") in low:
+                c["low_confidence"] = True
         text = "\n".join(c.get("text", "") for c in clauses)
-        return clauses, text, "docling"
+        return clauses, text, "docling", page_confidence
 
     data = _load_sidecar(pdf_path)
     if data is not None:
         clauses = data.get("clauses", [])
         text = data.get("text") or "\n".join(c.get("text", "") for c in clauses)
-        return clauses, text, "sidecar"
+        return clauses, text, "sidecar", {}
 
     clauses = _parse_with_text(pdf_path)
     if clauses:
         text = "\n".join(c.get("text", "") for c in clauses)
-        return clauses, text, "raw-text-fallback"
-    return [], "", "empty"
+        return clauses, text, "raw-text-fallback", {}
+    return [], "", "empty", {}
 
 
 def _load_sidecar(pdf_path: str) -> dict | None:
@@ -163,10 +187,10 @@ def _converter():
 
 
 def _parse_with_docling(pdf_path: str, doc_id: str):
-    """Best-effort docling parse -> clauses with page + bbox. Returns None if docling
-    is unavailable or errors, so callers fall back — but an ERROR (crash on a corrupt
-    PDF, OOM) is logged with its traceback, so it is distinguishable from docling
-    simply not being installed."""
+    """Best-effort docling parse -> (clauses with page + bbox, per-page OCR confidence).
+    Returns None if docling is unavailable, errors, or extracts nothing, so callers
+    fall back — but an ERROR (crash on a corrupt PDF, OOM) is logged with its
+    traceback, so it is distinguishable from docling simply not being installed."""
     try:
         from docling.document_converter import DocumentConverter  # noqa: F401
     except Exception:
@@ -218,10 +242,43 @@ def _parse_with_docling(pdf_path: str, doc_id: str):
                 # case.yaml can drift from what the contract's own cover page says.
                 "label": label,
             })
-        return clauses or _from_doc_texts(doc, heights)
+        clauses = clauses or _from_doc_texts(doc, heights)
+        if not clauses:
+            return None
+        return clauses, _ocr_page_confidence(result)
     except Exception:
         log.exception("docling parse failed for %s (%s)", doc_id, pdf_path)
         return None
+
+
+def _ocr_page_confidence(result: Any) -> dict[int, float]:
+    """Per-page OCR confidence from docling's ConfidenceReport (`result.confidence`).
+
+    What the pinned docling (2.113.0) actually exposes, verified by probing real
+    conversions: page-LEVEL scores only — result.confidence.pages[n].ocr_score,
+    alongside parse/layout/table scores and aggregate grades. It does NOT expose
+    per-word or per-cell OCR confidence (page.cells is empty once the pipeline
+    finishes), so page granularity is the finest this pin can record; the ticket's
+    original per-token tinting is not possible until docling grows that surface.
+
+    ocr_score is NaN on pages where OCR never ran (the page had a digital text
+    layer). Those pages are OMITTED rather than recorded as 1.0: absence means
+    "nothing was OCR'd here", which is a different fact from "OCR'd perfectly".
+    The aggregate mean/low grades are deliberately NOT used — they fold in
+    layout_score, which sits in the FAIR band even on clean born-digital text, so
+    they would flag documents whose extraction is exact."""
+    pages = getattr(getattr(result, "confidence", None), "pages", None) or {}
+    out: dict[int, float] = {}
+    for no, scores in pages.items():
+        try:
+            score = float(getattr(scores, "ocr_score", None))
+            page = int(no)
+        except (TypeError, ValueError):
+            continue
+        if math.isnan(score):
+            continue
+        out[page] = round(score, 4)
+    return out
 
 
 def _from_doc_texts(doc, page_heights: dict[int, float] | None = None) -> list[dict] | None:
@@ -432,6 +489,10 @@ def chunk_clauses(clauses: list[dict], max_chars: int = 1000, overlap: int = 120
         # without it must keep loading unchanged.
         if c.get("kind"):
             base["kind"] = c["kind"]
+        # Same convention for the OCR-7 flag: a hit from a low-confidence OCR page can
+        # say so at citation time; absent everywhere else so older indexes load as-is.
+        if c.get("low_confidence"):
+            base["low_confidence"] = True
         if len(text) <= max_chars:
             chunks.append({"chunk_id": f"{ci}", "text": text, **base})
             continue
@@ -546,7 +607,7 @@ def ingest_document(pdf_path: str, doc_id: str, title: str, taxonomy: dict,
                 log.exception("ingest progress callback failed at %s", name)
 
     _stage("parsing")
-    clauses, text, source = parse_pdf(pdf_path, doc_id)
+    clauses, text, source, page_confidence = parse_pdf(pdf_path, doc_id)
     _stage("tagging")
     meta = llm.tag_document(text, taxonomy)
     entry = {
@@ -569,6 +630,12 @@ def ingest_document(pdf_path: str, doc_id: str, title: str, taxonomy: dict,
         "parse_source": source,
         "tag_source": meta.get("source", "stub"),
     }
+    # Per-page OCR confidence (OCR-7), only when the parse produced any: string keys
+    # so the entry reads back from catalog.json exactly as it was written (JSON has no
+    # int keys), and no key at all for digital documents or non-docling tiers — older
+    # catalog entries and born-digital docs stay byte-identical in shape.
+    if page_confidence:
+        entry["page_confidence"] = {str(p): s for p, s in page_confidence.items()}
     # Index chunks for scalable retrieval (large PDFs). Optional — the catalog still
     # works without it; the index just makes within-doc search rank properly. A failure
     # is RECORDED on the entry (a doc catalogued but absent from search is silently

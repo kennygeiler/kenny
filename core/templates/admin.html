@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kenny Admin — contract library, rule review and audit</title>
-  <link rel="stylesheet" href="/static/styles.css?v=10">
+  <link rel="stylesheet" href="/static/styles.css?v=11">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -148,6 +148,7 @@
           <li><i class="xk-table"></i>table row</li>
           <li><i class="xk-recovered"></i>recovered layout</li>
           <li><i class="xk-page"></i>page-level</li>
+          <li><i class="xk-text xlow"></i>low OCR confidence</li>
         </ul>
         <div class="xsplit">
           <div class="xstage" id="xrayStage"></div>
@@ -222,6 +223,7 @@
       const rows = kinds['table-row'] || 0;
       const rec = (d.recovered_pages || []).length;
       const emp = (d.pages_empty || []).length;
+      const low = d.low_confidence_pages || [];
       const s = n => n === 1 ? '' : 's';
       return `<p class="score">
         <span class="score-tier ${cls}" title="Parse tier: how the text was extracted from the PDF">${esc(word)}</span>
@@ -229,6 +231,7 @@
         <span class="score-stat">${rows} table row${s(rows)}</span>
         ${rec ? `<span class="score-badge score-recovered" title="docling's layout model classified the page as a Picture; the spans were regrouped into rows from raw geometry">${rec} page${s(rec)} recovered from layout misclassification</span>` : ''}
         ${emp ? `<span class="score-badge score-empty" title="Nothing was extracted from page${s(emp)} ${esc((d.pages_empty || []).join(', '))}">${emp} empty page${s(emp)}</span>` : ''}
+        ${low.length ? `<span class="score-badge score-lowconf" title="docling's OCR scored page${s(low.length)} ${esc(low.join(', '))} below its 'excellent' grade — the text read from there may contain misread characters; check it in the X-ray">low OCR confidence on ${low.length} page${s(low.length)}</span>` : ''}
         ${d.index_error ? `<span class="score-badge score-fail" title="${esc(d.index_error)} — catalogued but absent from search">indexing failed</span>` : ''}
         ${d.pdf_sha256_short ? `<span class="score-sha" title="SHA-256 binding of the ingested PDF — provenance anchor">${esc(d.pdf_sha256_short)}</span>` : ''}
       </p>`;
@@ -574,10 +577,12 @@
     function uploadResult(r) {
       const [cls, word] = parseTier(r.parse_source);
       const n = r.clauses || 0;
+      const low = r.low_confidence_pages || [];
       return stageLine('done') + `<div class="card upload-result">
         <p><strong>${esc(r.title || r.doc_id)}</strong> — read.
           <span class="score-tier ${cls}" title="Parse tier: how the text was extracted from the PDF">${esc(word)}</span>
-          <span class="score-stat">${n} clause${n === 1 ? '' : 's'} extracted</span></p>
+          <span class="score-stat">${n} clause${n === 1 ? '' : 's'} extracted</span>
+          ${low.length ? `<span class="score-badge score-lowconf" title="docling's OCR scored page${low.length === 1 ? '' : 's'} ${esc(low.join(', '))} below its 'excellent' grade — the text read from there may contain misread characters">low OCR confidence</span>` : ''}</p>
         ${r.warning ? `<p class="notice">${esc(r.warning)}</p>` : ''}
         <p class="muted">${esc(r.note || '')}</p>
         <p><button type="button" onclick="openXray('${esc(r.doc_id)}')"
@@ -773,18 +778,23 @@
       // Table X-ray (OCR-5): on a majority-table page the count strip names the mode
       // and, in Compare, the right pane renders the rows as the grid they were.
       const model = compare ? tableModel(res.clauses) : null;
+      // Low OCR confidence (OCR-7): the server flags the PAGE (docling reports
+      // confidence per page, not per word) and every clause on it — the count strip
+      // names the condition once, each box/row wears the amber tint.
       $('xrayCounts').textContent = xrayCounts(res.clauses)
         + (model ? ` · table page — ${model.rows.length} row${model.rows.length === 1 ? '' : 's'}`
-                 + ` × ${model.cols} column${model.cols === 1 ? '' : 's'}` : '');
+                 + ` × ${model.cols} column${model.cols === 1 ? '' : 's'}` : '')
+        + (res.low_confidence ? ` · low OCR confidence on this page (score ${Number(res.ocr_confidence).toFixed(2)})` : '');
       const boxes = [...groups.values()].map(({gi, clauses: g}) => {
         const c = g[0], [l, t, r, b] = c.bbox;
         // t is the TOP edge's distance from the page bottom, hence (H - t) from the top.
         // Compare needs no tooltip: the full text sits in the right pane, and the tip
         // would cover the very rows the hover is pointing at.
         const tip = compare ? '' : `<span class="xtip">${esc(
-          (g.length > 1 ? `${g.length} clauses share this box · ` : '')
+          (c.low_confidence ? 'low OCR confidence on this page · ' : '')
+          + (g.length > 1 ? `${g.length} clauses share this box · ` : '')
           + (c.clause ? `§${c.clause} — ` : '') + (c.text || '').slice(0, 200))}</span>`;
-        return `<div class="xbox ${xrayKind(c.kind)}" tabindex="0" data-g="${gi}"
+        return `<div class="xbox ${xrayKind(c.kind)}${c.low_confidence ? ' xlow' : ''}" tabindex="0" data-g="${gi}"
           style="left:${(l / W * 100).toFixed(3)}%;top:${((H - t) / H * 100).toFixed(3)}%;width:${((r - l) / W * 100).toFixed(3)}%;height:${((t - b) / H * 100).toFixed(3)}%">${tip}</div>`;
       }).join('');
       stage.innerHTML = `<img src="/doc/${encodeURIComponent(XRAY_DOC)}/page/${XRAY_PAGE}"
@@ -799,7 +809,7 @@
     function renderComparePane(clauses, model) {
       const placed = clauses.filter(c => c._g != null).sort((a, b) => b.bbox[1] - a.bbox[1]);
       const loose = clauses.filter(c => c._g == null);
-      const row = c => `<div class="xrow ${xrayKind(c.kind)}"${c._g != null ? ` data-g="${c._g}"` : ''} tabindex="0">
+      const row = c => `<div class="xrow ${xrayKind(c.kind)}${c.low_confidence ? ' xlow' : ''}"${c._g != null ? ` data-g="${c._g}"` : ''} tabindex="0"${c.low_confidence ? ' title="low OCR confidence on this page — the text may contain misread characters"' : ''}>
           <i class="xdot ${xrayKind(c.kind)}" aria-hidden="true"></i>
           <div class="xrow-body">${c.clause ? `<span class="xrow-no">§${esc(c.clause)}</span> ` : ''}<span class="xrow-text">${esc(c.text || '')}</span></div>
         </div>`;
@@ -893,7 +903,7 @@
         ${model.caption ? `<caption>${esc(model.caption)}</caption>` : ''}
         ${showHead ? `<thead><tr>${line(model.headers, 'th')}</tr></thead>` : ''}
         <tbody>${model.rows.map(({c, cells}) =>
-          `<tr class="${xrayKind(c.kind)}"${c._g != null ? ` data-g="${c._g}"` : ''} tabindex="0">${line(cells, 'td')}</tr>`).join('')}</tbody>
+          `<tr class="${xrayKind(c.kind)}${c.low_confidence ? ' xlow' : ''}"${c._g != null ? ` data-g="${c._g}"` : ''} tabindex="0"${c.low_confidence ? ' title="low OCR confidence on this page — the text may contain misread characters"' : ''}>${line(cells, 'td')}</tr>`).join('')}</tbody>
       </table></div>`;
     }
 
