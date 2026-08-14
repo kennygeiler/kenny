@@ -69,7 +69,8 @@ def main(case_rel: str, stage_dir: str, keep_sources: bool = False) -> int:
         if not pdfs:
             print(f"no PDFs in {case_dir}/sources — already reset. Nothing moved.",
                   file=sys.stderr)
-            print(f"if you want them back: python scripts/make_citywide_corpus.py")
+            print("if you want them back: restore them from the staging folder "
+                  "(sources_staged/) or from git")
             return 1
         if os.path.exists(stage) and os.listdir(stage):
             print(f"staging folder is not empty: {stage}\nmove or delete it yourself, then "

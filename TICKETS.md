@@ -1,5 +1,17 @@
 # Holly — Path to 10/10 Backlog
 
+> **STATUS (2026-08-14): implemented.** All epics landed on this branch, one commit per
+> epic (A2/A1/A3 in "Provenance integrity…", B in "Chat correctness…", C in "Auth
+> hardening…", D in "Retrieval…", E in "Delimit document text…", F alongside A, G in the
+> hygiene commit). File:line references below describe the PRE-fix code and are kept as
+> the audit record. Deliberately deferred, with reasons:
+> - D2 note "vectors as JSON text floats" — kept; correctness/scale fixes landed, the
+>   storage format is an optimization with no failure mode at this corpus size.
+> - C6 "/api/case reveals whether an API key is set" — kept; the endpoint is already
+>   behind auth and the chat badge is built from it.
+> - A7 runs docling OCR in-band with pinned options; the OCR-tier test is opt-in
+>   (HOLLY_TEST_OCR=1) because it downloads models and takes minutes.
+
 Source: full-code audit 2026-08-14 (three passes: ingest/provenance, auth/security, chat/retrieval).
 Each ticket is self-contained: problem, evidence (file:line), acceptance criteria.
 Priority: P0 = undercuts a core product claim or produces wrong answers today;

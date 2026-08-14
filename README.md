@@ -56,9 +56,12 @@ restart. The chat badge then shows `LLM: Claude`. Without a key it still runs en
 deterministic fallbacks cover every LLM touchpoint. **Money math is deterministic either
 way.**
 
-**Offline / lightweight:** docling pulls torch + models on first parse. Ingestion falls
-back to the committed `sources/*.clauses.json` sidecars (exact bboxes), so you can skip
-installing docling and everything still works.
+**Offline / lightweight:** docling pulls torch + models on first parse — but the Santa
+Cruz case ships with its catalog and search index already baked, so the app answers
+without ever parsing. Skipping docling only matters if you RE-ingest: parsing then
+degrades to raw page text (page-level citations), unless a `sources/*.clauses.json`
+sidecar is present — an optional generated artifact that is only trusted when it embeds
+the SHA-256 of the exact PDF it was extracted from.
 
 ---
 
