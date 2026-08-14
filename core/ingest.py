@@ -426,6 +426,12 @@ def chunk_clauses(clauses: list[dict], max_chars: int = 1000, overlap: int = 120
     for ci, c in enumerate(clauses):
         text = c.get("text", "")
         base = {"clause": c.get("clause"), "page": c.get("page"), "bbox": c.get("bbox")}
+        # `kind` (table-row / recovered-* / page-text; absent = normal text) travels with
+        # the chunk so a search hit can say what KIND of extraction produced its text
+        # (OCR-4 extraction-tier chips). Only stamped when present — older baked indexes
+        # without it must keep loading unchanged.
+        if c.get("kind"):
+            base["kind"] = c["kind"]
         if len(text) <= max_chars:
             chunks.append({"chunk_id": f"{ci}", "text": text, **base})
             continue

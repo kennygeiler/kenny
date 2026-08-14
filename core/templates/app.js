@@ -38,6 +38,21 @@ function fmtVal(n, type) {
   }
 }
 
+// Extraction-tier chip (OCR-4): says where a cited passage's text CAME FROM. The tier
+// itself is computed server-side (core/app.py::_extraction_tier — the one mapping);
+// this only renders it, so client and server can never disagree. Unknown/absent tier
+// renders nothing: no claim beats a wrong claim.
+const TIER_TITLES = {
+  'text layer': "Read directly from the PDF's digital text layer with exact clause positions",
+  'recovered layout': 'The layout model misread this page; the text was recovered from raw span geometry',
+  'page-level': 'Extracted as raw page text — citations open the page, not the exact clause',
+  'sidecar extract': 'Loaded from a hash-bound sidecar extraction',
+};
+function tierChip(tier) {
+  if (!tier || !TIER_TITLES[tier]) return '';
+  return ` <span class="tier-chip" title="${esc(TIER_TITLES[tier])}">${esc(tier)}</span>`;
+}
+
 function addUser(text) { log.appendChild(el(`<div class="msg user">${esc(text)}</div>`)); scroll(); }
 function addBot(node) { const m = el('<div class="msg bot"></div>'); m.appendChild(node); log.appendChild(m); scroll(); }
 function scroll() { window.scrollTo(0, document.body.scrollHeight); }
@@ -225,7 +240,7 @@ function renderPolicy(res) {
     res.sources.forEach(s => {
       const btn = el(`<button type="button" class="source-chip"><strong>${esc(s.title || s.doc_id)}</strong>
         <span class="tag">${esc(s.department || '')}</span> <strong>§${esc(s.clause)}</strong>
-        <span class="muted"> p.${esc(s.page)}</span><br>
+        <span class="muted"> p.${esc(s.page)}</span>${tierChip(s.tier)}<br>
         <span class="src-text">${esc(s.text || '')}</span></button>`);
       btn.onclick = () => openSource(s);
       wrap.appendChild(btn);
@@ -247,7 +262,7 @@ function renderPolicy(res) {
 function openSource(s) {
   const body = document.getElementById('drawerBody');
   body.innerHTML = `<h3>${esc(s.doc_id)} §${esc(s.clause)}</h3>
-    <div class="muted">page ${esc(s.page)} · relevance ${esc(s.score)}</div>
+    <div class="muted">page ${esc(s.page)} · relevance ${esc(s.score)}${tierChip(s.tier)}</div>
     <div class="trace-step">${esc(s.text || '')}</div>`;
   const box = (s.bbox || []).join(',');
   const cite = el(`<div class="cite"><div class="muted">Source section highlighted on the PDF:</div></div>`);
@@ -275,7 +290,7 @@ async function openAudit(queryId, li) {
     if (seen.has(key)) return; seen.add(key);
     const box = (c.bbox || []).join(',');
     const url = `/doc/${c.doc_id}/page/${c.page}?bbox=${box}`;
-    const cite = el(`<div class="cite"><div class="muted">Source: ${esc(c.doc_id)} §${esc(c.clause)} (p.${esc(c.page)})</div></div>`);
+    const cite = el(`<div class="cite"><div class="muted">Source: ${esc(c.doc_id)} §${esc(c.clause)} (p.${esc(c.page)})${tierChip(c.tier)}</div></div>`);
     const img = new Image(); img.src = url;
   img.alt = `Page ${c.page} of ${c.doc_id} with clause ${c.clause} outlined in red`;
     img.onerror = () => { img.remove(); cite.appendChild(el('<div class="muted">(page render unavailable — bbox: ' + esc(box) + ')</div>')); };

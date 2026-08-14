@@ -154,22 +154,59 @@ def _doc_integrity(case, cat, doc_ids: list[str], rules) -> list[str]:
     return problems
 
 
+def _extraction_tier(parse_source: str, kind: str) -> str | None:
+    """Human label for HOW a piece of cited text was extracted (OCR-4) — the trust
+    signal at the moment of reading an answer. The ONE mapping; app.js only renders
+    the `tier` field this stamps, so client and server can never disagree.
+
+      recovered-* kind        -> "recovered layout"  (layout model misread the page;
+                                                      text regrouped from span geometry)
+      docling + normal/table  -> "text layer"        (digital text layer, exact bboxes)
+      raw-text-fallback       -> "page-level"        (page text only; citations open
+                                                      the page, not the clause)
+      sidecar                 -> "sidecar extract"   (hash-bound sidecar extraction)
+      anything else           -> None                (no claim beats a wrong claim)
+    """
+    if kind in ("recovered-row", "recovered-text"):
+        return "recovered layout"
+    if parse_source == "docling" and kind in ("text", "table-row"):
+        return "text layer"
+    if parse_source == "raw-text-fallback":
+        return "page-level"
+    if parse_source == "sidecar":
+        return "sidecar extract"
+    return None
+
+
 def _enrich_citations(cat, result_dict: dict) -> dict:
     """Fill in each citation's page + bbox from the ingested document (docling) when
     the rule left them blank — so highlights land on the real section even for large
-    PDFs whose coordinates aren't known at authoring time."""
+    PDFs whose coordinates aren't known at authoring time. Also stamps every citation
+    with its extraction provenance (`parse_source`, `kind`, `tier` — OCR-4), looked up
+    from the catalog entry of the cited document."""
     clause_cache: dict[str, list] = {}
+    entry_cache: dict[str, dict] = {}
     for li in result_dict.get("line_items", []):
         for c in li.get("citations", []):
-            if c.get("bbox"):
-                continue
             doc_id = c.get("doc_id", "")
+            entry = entry_cache.setdefault(doc_id, cat.get(doc_id) or {})
             clauses = clause_cache.setdefault(doc_id, cat.clauses(doc_id))
+            kind, kind_found = "text", False
             for cl in clauses:
-                if cl.get("clause") == c.get("clause") and cl.get("bbox"):
-                    c["bbox"] = cl["bbox"]
+                if str(cl.get("clause")) != str(c.get("clause")):
+                    continue
+                if not kind_found:
+                    kind = cl.get("kind") or "text"
+                    kind_found = True
+                if c.get("bbox"):
+                    break                       # nothing left to fill
+                if cl.get("bbox"):              # first match WITH coordinates wins,
+                    c["bbox"] = cl["bbox"]      # exactly as before OCR-4
                     c["page"] = cl.get("page", c.get("page"))
                     break
+            c["parse_source"] = entry.get("parse_source", "")
+            c["kind"] = kind
+            c["tier"] = _extraction_tier(c["parse_source"], kind)
     return result_dict
 
 
@@ -227,6 +264,18 @@ def _doc_meta(case, doc_id: str) -> dict:
     s = case.source_by_id(doc_id) or {}
     return {"doc_id": doc_id, "title": s.get("title", doc_id),
             "department": s.get("department"), "doc_type": s.get("doc_type")}
+
+
+def _source_entry(case, cat, h: dict) -> dict:
+    """One chat source chip's payload: document metadata + the hit's citation fields +
+    extraction provenance (parse_source / kind / tier — OCR-4). `kind` may be missing
+    from a hit produced by a backend that predates it (OpenSearch) — treat as text."""
+    parse_source = (cat.get(h["doc_id"]) or {}).get("parse_source", "")
+    kind = h.get("kind") or "text"
+    return {**_doc_meta(case, h["doc_id"]), "clause": h["clause"], "page": h["page"],
+            "bbox": h["bbox"], "text": h["text"], "score": h["score"],
+            "parse_source": parse_source, "kind": kind,
+            "tier": _extraction_tier(parse_source, kind)}
 
 
 def _is_rate_row(hit: dict) -> bool:
@@ -348,9 +397,7 @@ def _policy_answer(case, led, qid: str, prompt: str, department: str | None = No
             "answer": ans["answer"], "answer_source": ans["source"], "department": dept,
             "corpus_size": len(ingested),
             "considered": [_doc_meta(case, d) for d in scope],
-            "sources": [{**_doc_meta(case, h["doc_id"]), "clause": h["clause"],
-                         "page": h["page"], "bbox": h["bbox"], "text": h["text"],
-                         "score": h["score"]} for h in hits[:4]]}
+            "sources": [_source_entry(case, cat, h) for h in hits[:4]]}
 
 
 def _entitlement_answer(case, led, qid: str, prompt: str,

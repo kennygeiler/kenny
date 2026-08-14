@@ -195,9 +195,11 @@ class LocalBM25Backend(SearchBackend):
         return chunks
 
     def _hit(self, c: dict, score: float) -> dict:
+        # `kind` defaults to "text": chunks baked before OCR-4 (including the committed
+        # santacruz index) carry no kind, and absent has always meant normal text.
         return {"doc_id": c.get("doc_id"), "clause": c.get("clause"), "page": c.get("page"),
                 "bbox": c.get("bbox"), "score": round(float(score), 4),
-                "text": c.get("text", "")[:400]}
+                "text": c.get("text", "")[:400], "kind": c.get("kind") or "text"}
 
     def search(self, query: str, doc_ids=None, k: int = 5) -> list[dict]:
         chunks = self._scope(doc_ids)
