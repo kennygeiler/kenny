@@ -61,3 +61,17 @@ def test_page_is_clamped_into_range(client):
 def test_unknown_doc_is_404(client):
     c, _ = client
     assert c.get("/doc/no-such-doc/clauses").status_code == 404
+
+
+def test_admin_page_ships_the_compare_view(client):
+    """OCR-2 is frontend-only over the OCR-1 endpoint, so the meaningful server
+    assertion is that the admin page actually ships the Compare surface: the entry
+    point, the split-pane containers, and a bumped stylesheet version (stale cached
+    CSS would render the split layout as a broken single column)."""
+    c, _ = client
+    html = c.get("/admin").text
+    assert "openCompare(" in html, "every document card needs a Compare entry point"
+    assert 'id="xrayText"' in html and 'class="xsplit"' in html
+    assert "styles.css?v=8" in html
+    css = c.get("/static/styles.css").text
+    assert ".xsplit" in css and ".xtext" in css and ".xrow" in css

@@ -301,17 +301,18 @@ figure { margin: 0; }
 .xstage { position: relative; }
 .xstage img { display: block; width: 100%; border: 1px solid var(--line); border-radius: 4px; }
 .xbox { position: absolute; border: 1px solid; border-radius: 2px; }
-.xbox:hover, .xbox:focus { z-index: 3; }
+.xbox:hover, .xbox:focus, .xbox.active { z-index: 3; }
 /* Kind colours: translucent fill + solid border, opaque enough on hover to read as
-   selected but never enough to hide the text underneath. */
+   selected but never enough to hide the text underneath. `.active` is the same state
+   set from the other pane of the Compare view (OCR-2). */
 .xk-text { border-color: #2b6cb0; background: rgba(43, 108, 176, .16); }
-.xbox.xk-text:hover, .xbox.xk-text:focus { background: rgba(43, 108, 176, .34); }
+.xbox.xk-text:hover, .xbox.xk-text:focus, .xbox.xk-text.active { background: rgba(43, 108, 176, .34); }
 .xk-table { border-color: #b7791f; background: rgba(183, 121, 31, .18); }
-.xbox.xk-table:hover, .xbox.xk-table:focus { background: rgba(183, 121, 31, .36); }
+.xbox.xk-table:hover, .xbox.xk-table:focus, .xbox.xk-table.active { background: rgba(183, 121, 31, .36); }
 .xk-recovered { border-color: #6b46c1; background: rgba(107, 70, 193, .18); }
-.xbox.xk-recovered:hover, .xbox.xk-recovered:focus { background: rgba(107, 70, 193, .36); }
+.xbox.xk-recovered:hover, .xbox.xk-recovered:focus, .xbox.xk-recovered.active { background: rgba(107, 70, 193, .36); }
 .xk-page { border-color: #718096; background: rgba(113, 128, 150, .16); }
-.xbox.xk-page:hover, .xbox.xk-page:focus { background: rgba(113, 128, 150, .34); }
+.xbox.xk-page:hover, .xbox.xk-page:focus, .xbox.xk-page.active { background: rgba(113, 128, 150, .34); }
 .xbox .xtip {
   display: none; position: absolute; left: 0; top: 100%; margin-top: 3px;
   background: #16202e; color: #fff; font-size: 12px; line-height: 1.45;
@@ -319,6 +320,40 @@ figure { margin: 0; }
   z-index: 4; pointer-events: none;
 }
 .xbox:hover .xtip, .xbox:focus .xtip { display: block; }
+
+/* ---------------- side-by-side Compare (OCR_TICKETS.md OCR-2) ---------------- */
+/* Compare reuses the X-ray dialog; `.compare` widens the panel and splits the body
+   ~55/45 — rendered page left, extracted text right. min-width:0 on both flex items
+   lets long extracted lines wrap instead of forcing the panel past the viewport, so
+   nothing overflows at 1280px. */
+#xray.compare .xpanel { max-width: 1240px; }
+.xsplit { display: flex; gap: 14px; align-items: flex-start; }
+.xsplit .xstage { flex: 1 1 55%; min-width: 0; }
+.xtext {
+  flex: 1 1 45%; min-width: 0; max-height: 78vh; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+}
+.xrow {
+  display: flex; gap: 8px; padding: 7px 10px; font-size: 13px; line-height: 1.5;
+  border-bottom: 1px solid var(--line);
+}
+.xrow:last-child { border-bottom: 0; }
+/* Rows carry the same xk-* kind classes as their boxes (for the dot's colour); the
+   row itself stays neutral until hovered/actived, then tints in its kind's colour. */
+.xtext .xrow { background: #fff; border-color: var(--line); }
+.xtext .xrow.xk-text:hover, .xtext .xrow.xk-text.active { background: rgba(43, 108, 176, .13); }
+.xtext .xrow.xk-table:hover, .xtext .xrow.xk-table.active { background: rgba(183, 121, 31, .15); }
+.xtext .xrow.xk-recovered:hover, .xtext .xrow.xk-recovered.active { background: rgba(107, 70, 193, .15); }
+.xtext .xrow.xk-page:hover, .xtext .xrow.xk-page.active { background: rgba(113, 128, 150, .13); }
+.xdot { flex: none; width: 10px; height: 10px; border: 1px solid; border-radius: 50%; margin-top: 5px; }
+.xrow-body { min-width: 0; overflow-wrap: anywhere; }
+.xrow-no { font-weight: 600; color: var(--navy); }
+.xrow-loose-head { font-size: 12px; margin: 8px 10px 0; }
+@media (max-width: 900px) {
+  .xsplit { flex-direction: column; }
+  .xsplit .xstage, .xtext { flex: none; width: 100%; }
+  .xtext { max-height: 42vh; }
+}
 
 /* ---------------- chat ---------------- */
 #log { display: flex; flex-direction: column; gap: 14px; margin-bottom: 96px; }

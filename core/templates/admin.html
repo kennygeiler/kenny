@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kenny Admin — contract library, rule review and audit</title>
-  <link rel="stylesheet" href="/static/styles.css?v=7">
+  <link rel="stylesheet" href="/static/styles.css?v=8">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -125,7 +125,9 @@
   </div>
 
   <!-- Document X-ray (OCR_TICKETS.md OCR-1): the rendered page with every extracted
-       clause boxed, colour-coded by kind. Proof the machine read the document. -->
+       clause boxed, colour-coded by kind. Proof the machine read the document.
+       The same dialog also serves Compare (OCR-2): page + boxes on the left, the
+       extracted text in reading order on the right, hover linking the two sides. -->
   <div id="xray" role="dialog" aria-modal="true" aria-labelledby="xrayTitle" hidden>
     <div class="xpanel">
       <div class="xh">
@@ -145,7 +147,10 @@
           <li><i class="xk-recovered"></i>recovered layout</li>
           <li><i class="xk-page"></i>page-level</li>
         </ul>
-        <div class="xstage" id="xrayStage"></div>
+        <div class="xsplit">
+          <div class="xstage" id="xrayStage"></div>
+          <div class="xtext" id="xrayText" aria-label="Extracted clauses in reading order" hidden></div>
+        </div>
       </div>
     </div>
   </div>
@@ -260,7 +265,10 @@
         <p class="mono id">${esc(d.doc_id)} · ${tot} clauses
           <button type="button" class="ghost small" onclick="openXray('${esc(d.doc_id)}')"
                   title="See every clause the machine extracted, boxed on the page it came from">
-            X-ray</button></p>
+            X-ray</button>
+          <button type="button" class="ghost small" onclick="openCompare('${esc(d.doc_id)}')"
+                  title="Page image beside its extracted text — hover either side to check the extraction by eye">
+            Compare</button></p>
         ${scorecard(d)}
         ${d.declared_title && d.declared_title !== d.title
           ? `<p class="muted">Filed in this case as “${esc(d.declared_title)}”.</p>` : ''}
@@ -618,11 +626,13 @@
       else if (!$('drawer').hidden) closeDrawer();
     });
 
-    /* ---------------- document X-ray (OCR_TICKETS.md OCR-1) ---------------- */
+    /* ------- document X-ray + side-by-side Compare (OCR_TICKETS.md OCR-1/2) ------- */
     // Boxes are positioned in % of the page so they stay glued to their clauses at any
     // rendered width. Catalog bboxes are bottom-left origin ([l,t,r,b], t measured from
     // the page BOTTOM) — the same flip core/pdfview.py does, here in percentages.
-    let XRAY_DOC = null, XRAY_PAGE = 1, XRAY_PAGES = 1, XRAY_FOCUS = null;
+    // One dialog serves both views; XRAY_MODE picks the layout. Compare adds a right
+    // pane with the extracted text and a shared hover state keyed by merged-box index.
+    let XRAY_DOC = null, XRAY_PAGE = 1, XRAY_PAGES = 1, XRAY_FOCUS = null, XRAY_MODE = 'xray';
 
     const xrayKind = k => k === 'table-row' ? 'xk-table'
       : (k === 'recovered-row' || k === 'recovered-text') ? 'xk-recovered'
@@ -641,10 +651,14 @@
         + (parts.length ? ` (${parts.join(', ')})` : '');
     }
 
-    function openXray(docId) {
+    const openXray = docId => openViewer('xray', docId);
+    const openCompare = docId => openViewer('compare', docId);
+    function openViewer(mode, docId) {
       XRAY_FOCUS = document.activeElement;
-      XRAY_DOC = docId; XRAY_PAGE = 1;
-      $('xrayTitle').textContent = `X-ray — ${docTitle(docId)}`;
+      XRAY_DOC = docId; XRAY_PAGE = 1; XRAY_MODE = mode;
+      $('xrayTitle').textContent = `${mode === 'compare' ? 'Compare' : 'X-ray'} — ${docTitle(docId)}`;
+      $('xray').classList.toggle('compare', mode === 'compare');
+      $('xrayText').hidden = mode !== 'compare';
       $('xray').hidden = false;
       $('xrayClose').focus();
       loadXray();
@@ -652,6 +666,7 @@
     function closeXray() {
       $('xray').hidden = true;
       $('xrayStage').innerHTML = '';
+      $('xrayText').innerHTML = '';
       if (XRAY_FOCUS) XRAY_FOCUS.focus();
     }
     $('xray').addEventListener('click', e => { if (e.target === $('xray')) closeXray(); });
@@ -661,8 +676,9 @@
     }
 
     async function loadXray() {
-      const stage = $('xrayStage');
+      const stage = $('xrayStage'), pane = $('xrayText');
       stage.innerHTML = `<p class="muted">Reading page ${XRAY_PAGE}&hellip;</p>`;
+      pane.innerHTML = '';
       let res;
       try {
         const resp = await fetch(`/doc/${encodeURIComponent(XRAY_DOC)}/clauses?page=${XRAY_PAGE}`);
@@ -681,25 +697,73 @@
       // Clauses sharing an identical bbox (docling gives every row of some tables the
       // whole-table box) are merged into ONE div: stacked translucent fills compose to
       // an opaque blob that hides the page, and only the topmost would be hoverable.
+      // Each merged box gets a group index (data-g); in Compare the SAME index is
+      // stamped on every right-side row drawn from that box, so hovering one merged
+      // table box lights all of its rows, and any of those rows lights the box.
       const groups = new Map();
       res.clauses.forEach(c => {
+        c._g = null;
         if (!c.bbox || c.bbox.length !== 4) return;
         const k = c.bbox.join(',');
-        if (!groups.has(k)) groups.set(k, []);
-        groups.get(k).push(c);
+        if (!groups.has(k)) groups.set(k, {gi: groups.size, clauses: []});
+        const g = groups.get(k);
+        g.clauses.push(c);
+        c._g = g.gi;
       });
-      const boxes = [...groups.values()].map(g => {
+      const compare = XRAY_MODE === 'compare';
+      const boxes = [...groups.values()].map(({gi, clauses: g}) => {
         const c = g[0], [l, t, r, b] = c.bbox;
         // t is the TOP edge's distance from the page bottom, hence (H - t) from the top.
-        const tip = (g.length > 1 ? `${g.length} clauses share this box · ` : '')
-          + (c.clause ? `§${c.clause} — ` : '') + (c.text || '').slice(0, 200);
-        return `<div class="xbox ${xrayKind(c.kind)}" tabindex="0"
-          style="left:${(l / W * 100).toFixed(3)}%;top:${((H - t) / H * 100).toFixed(3)}%;width:${((r - l) / W * 100).toFixed(3)}%;height:${((t - b) / H * 100).toFixed(3)}%">
-          <span class="xtip">${esc(tip)}</span></div>`;
+        // Compare needs no tooltip: the full text sits in the right pane, and the tip
+        // would cover the very rows the hover is pointing at.
+        const tip = compare ? '' : `<span class="xtip">${esc(
+          (g.length > 1 ? `${g.length} clauses share this box · ` : '')
+          + (c.clause ? `§${c.clause} — ` : '') + (c.text || '').slice(0, 200))}</span>`;
+        return `<div class="xbox ${xrayKind(c.kind)}" tabindex="0" data-g="${gi}"
+          style="left:${(l / W * 100).toFixed(3)}%;top:${((H - t) / H * 100).toFixed(3)}%;width:${((r - l) / W * 100).toFixed(3)}%;height:${((t - b) / H * 100).toFixed(3)}%">${tip}</div>`;
       }).join('');
       stage.innerHTML = `<img src="/doc/${encodeURIComponent(XRAY_DOC)}/page/${XRAY_PAGE}"
         alt="Page ${XRAY_PAGE} of ${esc(XRAY_DOC)}, with every extracted clause boxed">` + boxes;
+      if (compare) renderComparePane(res.clauses);
     }
+
+    // Right pane (OCR-2): the page's clauses in reading order. bbox `t` is measured
+    // from the page BOTTOM, so descending t = top of the page first; the sort is
+    // stable, so merged table rows keep their catalog order within a shared box.
+    // Clauses with no bbox cannot be placed on the page and go last, unmarked.
+    function renderComparePane(clauses) {
+      const placed = clauses.filter(c => c._g != null).sort((a, b) => b.bbox[1] - a.bbox[1]);
+      const loose = clauses.filter(c => c._g == null);
+      const row = c => `<div class="xrow ${xrayKind(c.kind)}"${c._g != null ? ` data-g="${c._g}"` : ''} tabindex="0">
+          <i class="xdot ${xrayKind(c.kind)}" aria-hidden="true"></i>
+          <div class="xrow-body">${c.clause ? `<span class="xrow-no">§${esc(c.clause)}</span> ` : ''}<span class="xrow-text">${esc(c.text || '')}</span></div>
+        </div>`;
+      $('xrayText').innerHTML = placed.map(row).join('')
+        + (loose.length ? `<p class="muted xrow-loose-head">No position recorded on the page for:</p>`
+           + loose.map(row).join('') : '');
+    }
+
+    // Shared hover: a right-side row lights its box (and scrolls nothing); a box
+    // lights all of its rows and brings the first into view. Delegated on the two
+    // containers so it survives every innerHTML rebuild on page steps.
+    function xsync(g, on, fromStage) {
+      $('xrayStage').querySelectorAll(`.xbox[data-g="${g}"]`)
+        .forEach(b => b.classList.toggle('active', on));
+      const rows = $('xrayText').querySelectorAll(`.xrow[data-g="${g}"]`);
+      rows.forEach(r => r.classList.toggle('active', on));
+      if (on && fromStage && rows.length) rows[0].scrollIntoView({block: 'nearest'});
+    }
+    [['xrayStage', true], ['xrayText', false]].forEach(([id, fromStage]) => {
+      const sync = on => e => {
+        if (XRAY_MODE !== 'compare') return;
+        const t = e.target.closest('[data-g]');
+        if (t) xsync(t.dataset.g, on, fromStage);
+      };
+      $(id).addEventListener('mouseover', sync(true));
+      $(id).addEventListener('mouseout', sync(false));
+      $(id).addEventListener('focusin', sync(true));
+      $(id).addEventListener('focusout', sync(false));
+    });
 
     /* ---------------- audit ---------------- */
     async function loadLedger() {
