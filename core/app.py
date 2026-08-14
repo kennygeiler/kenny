@@ -521,6 +521,14 @@ def app_js():
                         media_type="application/javascript", headers=_NOCACHE)
 
 
+@app.get("/static/tour.js")
+def tour_js():
+    """Guided demo tour: one shared step engine for both surfaces (chat starts it,
+    /admin?tour=1 resumes it). Served like app.js so both templates can include it."""
+    return FileResponse(os.path.join(TEMPLATES, "tour.js"),
+                        media_type="application/javascript", headers=_NOCACHE)
+
+
 @app.get("/static/styles.css")
 def styles_css():
     return FileResponse(os.path.join(TEMPLATES, "styles.css"),

@@ -68,9 +68,15 @@ the SHA-256 of the exact PDF it was extracted from.
 
 ## Demo walkthrough
 
-The demo has two surfaces: **Chat** (`/`) is where you ask and cost; **Admin** (`/admin`)
-is where documents become trusted rules. The intended path is Admin left-to-right once to
-establish trust, then Chat forever.
+**The fast way:** press **"Take the tour"** on the chat page (header, next to the LLM
+badge). A guided walkthrough performs the clicks for you — it types the costing
+question, opens the audit drawer, points at the extraction-tier chips, then hands off
+to the admin surfaces (X-ray, Compare, the table X-ray, Verification, Audit) — with a
+Next button to advance and Esc to exit.
+
+The manual path below covers the same ground. The demo has two surfaces: **Chat** (`/`)
+is where you ask and cost; **Admin** (`/admin`) is where documents become trusted rules.
+The intended path is Admin left-to-right once to establish trust, then Chat forever.
 
 ### Part 1 — Admin: turn documents into trusted rules
 
