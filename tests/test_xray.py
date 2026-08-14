@@ -72,6 +72,21 @@ def test_admin_page_ships_the_compare_view(client):
     html = c.get("/admin").text
     assert "openCompare(" in html, "every document card needs a Compare entry point"
     assert 'id="xrayText"' in html and 'class="xsplit"' in html
-    assert "styles.css?v=8" in html
     css = c.get("/static/styles.css").text
     assert ".xsplit" in css and ".xtext" in css and ".xrow" in css
+
+
+def test_admin_page_ships_the_table_xray(client):
+    """OCR-5 is frontend-only over the OCR-1 endpoint: a majority-table page renders
+    as a structured HTML table in the Compare pane. The meaningful server assertion
+    is that the admin page ships the machinery — the majority-rule row parser, the
+    table renderer, the count-strip mode indicator — and a bumped stylesheet version
+    (stale cached CSS would render the grid unstyled and unhighlightable)."""
+    c, _ = client
+    html = c.get("/admin").text
+    assert "function tableModel(" in html, "majority-table detection + row-text parsing"
+    assert "renderXTable(" in html and 'class="xtable"' in html
+    assert "table page —" in html, "count-strip mode indicator"
+    assert "styles.css?v=9" in html
+    css = c.get("/static/styles.css").text
+    assert ".xtable" in css and ".xtable-wrap" in css
