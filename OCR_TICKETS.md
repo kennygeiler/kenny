@@ -5,6 +5,13 @@ produces clause-level provenance (1,861 clauses with `page`, `bbox`, `kind`, per
 `parse_source`, per-PDF `pdf_sha256`) — these tickets turn that data into surfaces a
 viewer can see and trust. Build in numbered order; each ticket is self-contained.
 
+> **STATUS (2026-08-14):** OCR-1 (X-ray, `eeb617d`), OCR-3 (scorecard, `8b23884`) and
+> OCR-4 (tier chips, `c71ccc6`) are DONE. Remaining, in order: OCR-2 (side-by-side),
+> OCR-5 (table X-ray), OCR-6 (live scan demo), OCR-7 (confidence capture).
+> Known data limitation: the shipped santacruz catalog predates per-row table bboxes
+> and sha recording — a re-ingest with docling refreshes both; the X-ray merges
+> shared-bbox rows into one box until then.
+
 Shared data facts (read before building):
 - `cases/<case>/catalog.json` — per doc: `parse_source` (`docling` | `sidecar` |
   `raw-text-fallback` | `empty`), `pdf_sha256`, `page_count`, `clauses[]`. Each clause:
