@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kenny Admin — contract library, rule review and audit</title>
-  <link rel="stylesheet" href="/static/styles.css?v=9">
+  <link rel="stylesheet" href="/static/styles.css?v=10">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -53,7 +53,7 @@
         </div>
         <p class="help" id="upload-help">Reading a large contract takes a few minutes: every page is
           parsed for its text, its tables, and the exact position of each clause.</p>
-        <p id="uploadMsg" class="muted" role="status" aria-live="polite"></p>
+        <div id="uploadMsg" class="muted" role="status" aria-live="polite"></div>
         <div id="docs"></div>
       </section>
 
@@ -208,12 +208,16 @@
     // Extraction scorecard (OCR_TICKETS.md OCR-3): how well the machine READ the
     // document — parse tier, what kinds of clauses came out, which pages yielded
     // nothing, which pages the layout-model rescue saved, and the sha binding.
+    // Shared by the scorecard rows and the upload result card (OCR-6) so a freshly
+    // uploaded document announces its tier with the same badge it will wear in the list.
+    const PARSE_TIER = {docling: ['tier-good', 'docling'],
+                        sidecar: ['tier-amber', 'sidecar'],
+                        'raw-text-fallback': ['tier-orange', 'raw text fallback'],
+                        empty: ['tier-bad', 'empty']};
+    const parseTier = src => PARSE_TIER[src] || ['tier-amber', src || 'unknown'];
+
     function scorecard(d) {
-      const TIER = {docling: ['tier-good', 'docling'],
-                    sidecar: ['tier-amber', 'sidecar'],
-                    'raw-text-fallback': ['tier-orange', 'raw text fallback'],
-                    empty: ['tier-bad', 'empty']};
-      const [cls, word] = TIER[d.parse_source] || ['tier-amber', d.parse_source || 'unknown'];
+      const [cls, word] = parseTier(d.parse_source);
       const kinds = d.kinds || {};
       const rows = kinds['table-row'] || 0;
       const rec = (d.recovered_pages || []).length;
@@ -543,15 +547,67 @@
       loadDocs(); loadRules();
     }
 
+    /* ------------- live upload demo (OCR_TICKETS.md OCR-6) -------------
+       The upload is async on the server: the request saves the file and returns a
+       job id; the job's `stage` walks parsing → tagging → indexing → done. Polling
+       renders the walk as a checklist, then the result card links straight into the
+       new document's X-ray so the extraction is inspectable the moment it lands. */
+    const UPLOAD_STAGES = [
+      ['saving',   'saving'],
+      ['parsing',  'parsing pages'],
+      ['tagging',  'tagging'],
+      ['indexing', 'indexing'],
+    ];
+    function stageLine(current) {
+      const at = current === 'done' ? UPLOAD_STAGES.length
+               : Math.max(0, UPLOAD_STAGES.findIndex(([k]) => k === current));
+      return `<p class="stages">` + UPLOAD_STAGES.map(([k, label], i) => {
+        const cls = i < at ? 'stage-done' : i === at ? 'stage-active' : 'stage-todo';
+        const mark = i < at ? '<span class="stage-mark" aria-hidden="true">✓</span>'
+                   : i === at ? '<span class="spin" aria-hidden="true"></span>' : '';
+        return `<span class="stage ${cls}">${mark}${label}</span>`;
+      }).join('<span class="stage-sep" aria-hidden="true">→</span>')
+        + `<span class="stage ${current === 'done' ? 'stage-done' : 'stage-todo'}">`
+        + `${current === 'done' ? '<span class="stage-mark" aria-hidden="true">✓</span>' : ''}done</span></p>`;
+    }
+
+    function uploadResult(r) {
+      const [cls, word] = parseTier(r.parse_source);
+      const n = r.clauses || 0;
+      return stageLine('done') + `<div class="card upload-result">
+        <p><strong>${esc(r.title || r.doc_id)}</strong> — read.
+          <span class="score-tier ${cls}" title="Parse tier: how the text was extracted from the PDF">${esc(word)}</span>
+          <span class="score-stat">${n} clause${n === 1 ? '' : 's'} extracted</span></p>
+        ${r.warning ? `<p class="notice">${esc(r.warning)}</p>` : ''}
+        <p class="muted">${esc(r.note || '')}</p>
+        <p><button type="button" onclick="openXray('${esc(r.doc_id)}')"
+             title="See every clause just extracted, boxed on the page it came from">
+           Open X-ray</button></p></div>`;
+    }
+
     async function upload() {
       const f = $('pdfFile').files[0];
       if (!f) { $('uploadMsg').textContent = 'Choose a PDF first.'; return; }
-      $('uploadMsg').textContent = `Reading ${f.name}… this can take a few minutes.`;
+      const head = `<p class="muted">Reading ${esc(f.name)}… a scanned contract can take
+        a few minutes (every page is OCR'd and layout-analysed).</p>`;
+      $('uploadMsg').innerHTML = head + stageLine('saving');
       const fd = new FormData(); fd.append('file', f);
       const res = await fetch('/admin/upload', {method: 'POST', body: fd}).then(r => r.json());
       if (res.error) { $('uploadMsg').innerHTML = `<span class="bad">${esc(res.error)}</span>`; return; }
-      $('uploadMsg').innerHTML = esc(`Added ${res.doc_id}: ${res.clauses} clauses. ${res.note || ''}`);
-      loadDocs(); loadRules();
+      for (;;) {
+        const j = await fetch(`/admin/ingest/status/${res.job_id}`).then(r => r.json());
+        if (j.status === 'error') {
+          $('uploadMsg').innerHTML = `<span class="bad">Could not read ${esc(f.name)}: ${esc(j.error)}</span>`;
+          return;
+        }
+        if (j.status === 'done') {
+          $('uploadMsg').innerHTML = uploadResult(j.result);
+          break;
+        }
+        $('uploadMsg').innerHTML = head + stageLine(j.stage || 'parsing');
+        await new Promise(r => setTimeout(r, 700));
+      }
+      await loadDocs(); loadRules();   // COVERAGE must know the new doc before its X-ray opens
     }
 
     async function pollJob(jobId) {

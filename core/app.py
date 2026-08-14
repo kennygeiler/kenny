@@ -60,6 +60,26 @@ auth.install(app, ledger_factory=lambda: _case().ledger())
 # In-process job registry for async ingestion (large PDFs). Single-worker; a
 # multi-worker deploy swaps this for a shared queue (PRD §8B).
 _JOBS: dict[str, dict] = {}
+# Guards check-then-register: bulk ingest (sync, threadpool) and upload (async, event
+# loop) both create jobs, so the single-flight test must be atomic across them.
+_JOBS_LOCK = threading.Lock()
+
+
+def _register_job(**fields) -> str | None:
+    """Register a new running job; None when one is already running.
+
+    Single-flight across BOTH bulk ingest and uploads (TICKETS.md C5): each job is a
+    thread plus docling doing minutes of torch work — two concurrent jobs double
+    memory on a 2GB instance and race on the same catalog/index files. Completed jobs
+    are pruned so the registry cannot grow without bound."""
+    with _JOBS_LOCK:
+        if any(j.get("status") == "running" for j in _JOBS.values()):
+            return None
+        while len(_JOBS) > 20:
+            _JOBS.pop(next(iter(_JOBS)))
+        job_id = uuid.uuid4().hex[:12]
+        _JOBS[job_id] = {"status": "running", "result": None, "error": None, **fields}
+        return job_id
 
 _MAX_UPLOAD_BYTES = int(os.environ.get("KENNY_MAX_UPLOAD_MB", "50")) << 20
 
@@ -862,6 +882,20 @@ def doc_clauses(doc_id: str, page: int = 1):
 # --------------------------------------------------------------------------- #
 # ADMIN
 # --------------------------------------------------------------------------- #
+def _ingest_warning(entry: dict) -> str | None:
+    """A doc that extracts nothing is silently unanswerable — surface it rather than
+    listing it as ingested. Shared by bulk ingest and upload so both report degraded
+    extraction identically."""
+    if not entry["clauses"]:
+        return "NO CONTENT EXTRACTED — this document is not searchable"
+    if entry.get("index_error"):
+        return (f"indexing failed ({entry['index_error']}) — catalogued but absent "
+                "from search")
+    if entry["parse_source"] == "raw-text-fallback":
+        return "degraded extraction (page-level citations only)"
+    return None
+
+
 def _ingest_worker(job_id: str):
     """Runs ingestion off the request path so large PDFs (docling parse can take
     minutes on a 50-page MOU) never time out the HTTP request (PRD §8B)."""
@@ -907,16 +941,7 @@ def _ingest_worker(job_id: str):
             ingested.append({"doc_id": src["id"], "tags": entry["tags"],
                              "summary": entry["summary"], "clauses": len(entry["clauses"]),
                              "parse_source": entry["parse_source"],
-                             # a doc that extracts nothing is silently unanswerable —
-                             # surface it rather than listing it as ingested
-                             "warning": ("NO CONTENT EXTRACTED — this document is not "
-                                         "searchable" if not entry["clauses"] else
-                                         f"indexing failed ({entry['index_error']}) — "
-                                         "catalogued but absent from search"
-                                         if entry.get("index_error") else
-                                         "degraded extraction (page-level citations only)"
-                                         if entry["parse_source"] == "raw-text-fallback"
-                                         else None)})
+                             "warning": _ingest_warning(entry)})
         # Ingest does NOT touch the review queue — rules are drafted per scenario, and a
         # re-ingest must never wipe drafts already sitting there awaiting approval.
         if missing:
@@ -950,19 +975,11 @@ def _ingest_worker(job_id: str):
 @app.post("/admin/ingest")
 def admin_ingest():
     """Kick off async ingestion; returns a job id to poll. See /admin/ingest/status.
-
-    Single-flight (TICKETS.md C5): each job is a thread plus docling doing minutes of
-    torch work — a second concurrent ingest doubles memory on a 2GB instance and the
-    two race on the same catalog/index files. Completed jobs are pruned so the
-    registry cannot grow without bound."""
-    if any(j.get("status") == "running" for j in _JOBS.values()):
+    Single-flight with uploads — see _register_job."""
+    job_id = _register_job(total=0, done=0, current=None)
+    if job_id is None:
         return JSONResponse({"error": "an ingest is already running — poll its status "
                              "or wait for it to finish"}, status_code=409)
-    while len(_JOBS) > 20:
-        _JOBS.pop(next(iter(_JOBS)))
-    job_id = uuid.uuid4().hex[:12]
-    _JOBS[job_id] = {"status": "running", "total": 0, "done": 0, "current": None,
-                     "result": None, "error": None}
     threading.Thread(target=_ingest_worker, args=(job_id,), daemon=True).start()
     return {"job_id": job_id, "status": "running"}
 
@@ -975,20 +992,77 @@ def admin_ingest_status(job_id: str):
     return job
 
 
+def _upload_worker(job_id: str, dest: str, doc_id: str, title: str, fname: str):
+    """Runs an uploaded document's ingest off the request path (OCR_TICKETS.md OCR-6):
+    a docling parse can take minutes, and the staged job (`stage`: parsing → tagging →
+    indexing → done) lets the UI show the extraction happening live instead of a
+    request that hangs until timeout."""
+    job = _JOBS[job_id]
+    try:
+        case = _case()
+        led = case.ledger()
+        cat = _catalog(case)
+        entry = ingest.ingest_document(
+            dest, doc_id, title, _taxonomy(case), cat, backend=_backend(case),
+            progress=lambda stage: job.__setitem__("stage", stage))
+        # Uploaded docs are catalog-only (not declared in case.yaml); the marker keeps
+        # the post-ingest reconciliation pass from garbage-collecting them.
+        entry["uploaded"] = True
+        cat.upsert(entry)
+        led.append("authoring.upload",
+                   {"doc_id": doc_id, "filename": fname,
+                    "parse_source": entry["parse_source"],
+                    "pdf_sha256": entry.get("pdf_sha256", ""),
+                    "tags": entry["tags"], "clauses": len(entry["clauses"])},
+                   actor="admin")
+        # An upload can replace an existing source file by name — same drift risk as a
+        # bulk re-ingest, so ratified rules citing this document are re-checked now.
+        _revalidate_citations(case, cat, [doc_id], led)
+        # Upload = extract + index, same as bulk ingest. It does NOT draft rules — this
+        # was the last surviving bulk-draft path after the scenario-scoped pivot, and it
+        # put a whole document's worth of competing rules back into the review queue.
+        # Policy Q&A over the new document works immediately; costing rules are
+        # authored per scenario.
+        job["result"] = {
+            "doc_id": doc_id, "title": title, "parse_source": entry["parse_source"],
+            "tags": entry["tags"], "summary": entry["summary"],
+            "clauses": len(entry["clauses"]), "proposed_rules": [],
+            "warning": _ingest_warning(entry),
+            "note": ("Document read and indexed — ask about it in chat right away. "
+                     "Costing rules are drafted per scenario on the Verification tab.")}
+        job["stage"] = "done"
+        job["status"] = "done"
+    except Exception as e:  # surface the failure to the poller
+        job["status"] = "error"
+        job["error"] = str(e)
+
+
 @app.post("/admin/upload")
 async def admin_upload(file: UploadFile = File(...)):
-    """Upload a PDF: save it into the case, parse (docling->bbox, sidecar fallback),
-    tag/summarize into the catalog, and draft candidate rules for the review gate."""
+    """Upload a PDF: save it into the case, then ingest it ASYNC (parse -> tag ->
+    index) under a staged job — poll /admin/ingest/status/{job_id} (OCR-6). Saving
+    and validation stay in-request so a bad file fails fast with a real status code."""
     case = _case()
-    led = case.ledger()
-    cat = _catalog(case)
-    tax = _taxonomy(case)
-
     src_dir = os.path.join(case.dir, "sources")
     os.makedirs(src_dir, exist_ok=True)
     fname = os.path.basename(file.filename or "upload.pdf")
     if not fname.lower().endswith(".pdf"):
         return JSONResponse({"error": "only .pdf files are accepted"}, status_code=400)
+    doc_id = _slug(os.path.splitext(fname)[0])
+    title = os.path.splitext(fname)[0]
+
+    # Claim the single-flight slot BEFORE touching the destination file: an upload can
+    # replace a source PDF by name, and doing that while a running ingest is mid-parse
+    # on the same file would bind the catalog to bytes that no longer exist.
+    job_id = _register_job(stage="saving", doc_id=doc_id, filename=fname)
+    if job_id is None:
+        return JSONResponse({"error": "an ingest is already running — wait for it to "
+                             "finish before uploading"}, status_code=409)
+
+    def _reject(resp: JSONResponse) -> JSONResponse:
+        _JOBS.pop(job_id, None)  # a rejected upload never ran — leave no ghost job
+        return resp
+
     # Stream to a temp file with a hard size cap (TICKETS.md C5): reading the whole
     # upload into RAM let any credential holder OOM the 2GB instance, and writing the
     # destination directly could leave a half-written PDF over a good one.
@@ -1000,44 +1074,27 @@ async def admin_upload(file: UploadFile = File(...)):
             while chunk := await file.read(1 << 20):
                 size += len(chunk)
                 if size > _MAX_UPLOAD_BYTES:
-                    return JSONResponse(
+                    return _reject(JSONResponse(
                         {"error": f"file exceeds the "
                                   f"{_MAX_UPLOAD_BYTES // (1 << 20)}MB upload limit"},
-                        status_code=413)
+                        status_code=413))
                 f.write(chunk)
         with open(tmp, "rb") as f:
             if f.read(5) != b"%PDF-":
-                return JSONResponse({"error": "not a PDF (bad magic bytes)"},
-                                    status_code=400)
+                return _reject(JSONResponse({"error": "not a PDF (bad magic bytes)"},
+                                            status_code=400))
         os.replace(tmp, dest)
+    except Exception:
+        _JOBS.pop(job_id, None)
+        raise
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
 
-    doc_id = _slug(os.path.splitext(fname)[0])
-    title = os.path.splitext(fname)[0]
-    entry = ingest.ingest_document(dest, doc_id, title, tax, cat, backend=_backend(case))
-    # Uploaded docs are catalog-only (not declared in case.yaml); the marker keeps the
-    # post-ingest reconciliation pass from garbage-collecting them.
-    entry["uploaded"] = True
-    cat.upsert(entry)
-    led.append("authoring.upload",
-               {"doc_id": doc_id, "filename": fname, "parse_source": entry["parse_source"],
-                "pdf_sha256": entry.get("pdf_sha256", ""),
-                "tags": entry["tags"], "clauses": len(entry["clauses"])}, actor="admin")
-    # An upload can replace an existing source file by name — same drift risk as a bulk
-    # re-ingest, so ratified rules citing this document are re-checked immediately.
-    _revalidate_citations(case, cat, [doc_id], led)
-
-    # Upload = extract + index, same as bulk ingest. It does NOT draft rules — this was
-    # the last surviving bulk-draft path after the scenario-scoped pivot, and it put a
-    # whole document's worth of competing rules back into the review queue. Policy Q&A
-    # over the new document works immediately; costing rules are authored per scenario.
-    return {"doc_id": doc_id, "title": title, "parse_source": entry["parse_source"],
-            "tags": entry["tags"], "summary": entry["summary"],
-            "clauses": len(entry["clauses"]), "proposed_rules": [],
-            "note": ("Document read and indexed — ask about it in chat right away. "
-                     "Costing rules are drafted per scenario on the Verification tab.")}
+    _JOBS[job_id]["stage"] = "parsing"
+    threading.Thread(target=_upload_worker, args=(job_id, dest, doc_id, title, fname),
+                     daemon=True).start()
+    return {"job_id": job_id, "status": "running", "doc_id": doc_id, "filename": fname}
 
 
 def _slug(name: str) -> str:

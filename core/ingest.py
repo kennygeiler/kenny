@@ -533,8 +533,21 @@ def _clean_title(text: str) -> str:
 
 def ingest_document(pdf_path: str, doc_id: str, title: str, taxonomy: dict,
                     catalog: Catalog, page_count: int | None = None,
-                    backend=None) -> dict:
+                    backend=None, progress=None) -> dict:
+    # `progress` (optional callable taking a stage string) is called at each phase
+    # boundary — "parsing", "tagging", "indexing" — so an async job can show a live
+    # staged view of an ingest that may spend minutes inside docling (OCR-6). It is
+    # observability only: a callback failure must never abort the ingest itself.
+    def _stage(name: str) -> None:
+        if progress is not None:
+            try:
+                progress(name)
+            except Exception:
+                log.exception("ingest progress callback failed at %s", name)
+
+    _stage("parsing")
     clauses, text, source = parse_pdf(pdf_path, doc_id)
+    _stage("tagging")
     meta = llm.tag_document(text, taxonomy)
     entry = {
         "doc_id": doc_id,
@@ -560,6 +573,7 @@ def ingest_document(pdf_path: str, doc_id: str, title: str, taxonomy: dict,
     # works without it; the index just makes within-doc search rank properly. A failure
     # is RECORDED on the entry (a doc catalogued but absent from search is silently
     # unanswerable) and surfaced by the admin ingest warnings.
+    _stage("indexing")
     if backend is not None:
         try:
             backend.index(doc_id, chunk_clauses(clauses))
