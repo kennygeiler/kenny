@@ -316,6 +316,19 @@
     state.target = null;
     render(s, i, { busy: !!(s.pre || s.waitFor), note: '' });
     position(null);
+    // Watchdog: whatever happens inside this step — an action that never settles, a
+    // silent seq race, a wait that outlives its poll — the card must not stay busy
+    // forever. Verified live: a slow model answer left "performing…" up with Next
+    // disabled, which is exactly the trap this engine promises never to spring.
+    if (s.pre || s.waitFor) {
+      const deadline = (s.waitTimeout || 15000) + 5000;
+      setTimeout(() => {
+        if (state && state.seq === seq && state.i === i) {
+          render(s, i, { busy: false, note: s.timeoutNote || '' });
+          position(resolveTarget(s));
+        }
+      }, deadline);
+    }
     // Baseline BEFORE the action, so "wait for the response" means a NEW element,
     // not one left over from an earlier answer in the same session.
     const base = (s.waitFor && s.waitForNew) ? qa(s.waitFor).length : 0;
@@ -377,8 +390,12 @@
     const nextBtn = document.createElement('button');
     nextBtn.type = 'button';
     nextBtn.className = 'tour-next';
-    nextBtn.textContent = s.nextLabel || (i + 1 === n ? 'Finish' : 'Next');
-    nextBtn.disabled = !!busy;
+    // Never disabled: while the step is still performing, the button reads "Skip" and
+    // simply advances past the wait. A disabled Next plus any stalled action is a
+    // trapped visitor; seq guards make skipping mid-action safe (the stale step's
+    // remaining work no-ops when it sees the sequence moved on).
+    nextBtn.textContent = busy ? 'Skip'
+      : (s.nextLabel || (i + 1 === n ? 'Finish' : 'Next'));
     nextBtn.onclick = () => { if (s.advance) { endTour(); s.advance(); } else next(); };
     const endBtn = document.createElement('button');
     endBtn.type = 'button';

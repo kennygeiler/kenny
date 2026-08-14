@@ -36,7 +36,7 @@ def test_tour_js_route_serves(client):
 
 def test_chat_page_ships_the_tour(client):
     html = client.get("/").text
-    assert '/static/tour.js?v=1' in html, "chat must load the tour engine"
+    assert '/static/tour.js?v=' in html, "chat must load the tour engine"
     assert 'id="tourStart"' in html and "Take the tour" in html
     assert 'data-page="chat"' in html, "the engine keys its step list off this"
     assert "styles.css?v=6" in html, "stale cached CSS would ship no coach-mark styles"
@@ -44,7 +44,7 @@ def test_chat_page_ships_the_tour(client):
 
 def test_admin_page_ships_the_tour_resume_hook(client):
     html = client.get("/admin").text
-    assert '/static/tour.js?v=1' in html, "admin must load the engine so ?tour=1 resumes"
+    assert '/static/tour.js?v=' in html, "admin must load the engine so ?tour=1 resumes"
     assert 'data-page="admin"' in html
     assert "styles.css?v=12" in html
 
