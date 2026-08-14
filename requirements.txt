@@ -7,7 +7,10 @@ pandas
 python-multipart
 
 # Document ingestion & rendering
-docling            # heavy (pulls torch + models); ingestion has an offline fallback
+# docling is PINNED (TICKETS.md A6): its layout model and bbox coordinate conventions
+# feed the provenance chain, so an unreviewed upgrade must not change what ingestion
+# extracts. Bump deliberately, then re-ingest and eyeball citations.
+docling==2.113.0   # heavy (pulls torch + models); ingestion has an offline fallback
 pypdfium2
 pillow
 reportlab

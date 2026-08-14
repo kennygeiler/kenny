@@ -22,10 +22,14 @@ KEY="$(grep '^ANTHROPIC_API_KEY=' .env | cut -d= -f2- | tr -d '\"'"'"' \r')"
 [ -n "$KEY" ] || { echo "no ANTHROPIC_API_KEY in .env" >&2; exit 1; }
 VIEWER="$(openssl rand -base64 18)"
 ADMIN="$(openssl rand -base64 18)"
+# Ledger HMAC key: lives ONLY in Fly's secret store, never on the data volume — that
+# separation is what makes the audit chain unforgeable by anyone who can read the disk.
+LEDGER_KEY="$(openssl rand -base64 32)"
 fly secrets set -a "$APP" \
   ANTHROPIC_API_KEY="$KEY" \
   HOLLY_VIEWER_PASSWORD="$VIEWER" \
   HOLLY_ADMIN_PASSWORD="$ADMIN" \
+  HOLLY_LEDGER_KEY="$LEDGER_KEY" \
   HOLLY_REQUIRE_AUTH=1
 
 echo "==> deploy (prepare_deploy runs in the build; refuses if any known answer fails)"

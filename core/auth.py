@@ -126,6 +126,15 @@ def install(app) -> None:
             )
         return  # local dev: open, as before
 
+    if required and not os.environ.get("HOLLY_LEDGER_KEY", "").strip():
+        raise RuntimeError(
+            "HOLLY_REQUIRE_AUTH is set but HOLLY_LEDGER_KEY is missing. Refusing to "
+            "start: without the HMAC key the audit ledger is only internally "
+            "consistent — anyone with volume access could rewrite it and verify() "
+            "would still pass. Set HOLLY_LEDGER_KEY in the platform's secret store "
+            "(never on the data volume)."
+        )
+
     if _equal(viewer_pw, admin_pw):
         raise RuntimeError(
             "HOLLY_VIEWER_PASSWORD and HOLLY_ADMIN_PASSWORD are identical, which "
