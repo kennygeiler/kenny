@@ -21,7 +21,7 @@ from typing import Any
 from . import llm
 from .catalog import Catalog
 
-log = logging.getLogger("holly.ingest")
+log = logging.getLogger("kenny.ingest")
 
 
 def sha256_file(path: str) -> str:
@@ -56,7 +56,7 @@ def parse_pdf(pdf_path: str, doc_id: str) -> tuple[list[dict], str, str]:
     text from this PDF", and each one swallowed a nonexistent path into the same "empty"
     result — so ingesting a case.yaml that declares a document nobody has uploaded yet
     produced a catalogued document with zero clauses, indistinguishable from a scan. The
-    library then lists a contract Holly cannot answer from and never says why. Missing is
+    library then lists a contract Kenny cannot answer from and never says why. Missing is
     a hard error: it is fixed by supplying the file, not by degrading the extraction.
     """
     if not os.path.exists(pdf_path):

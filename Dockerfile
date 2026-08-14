@@ -1,4 +1,4 @@
-# Holly — shared demo image.
+# Kenny — shared demo image.
 #
 # Two-stage on purpose. docling drags in torch (~2GB of build tooling and wheels); the
 # runtime only needs the installed packages, the cached model weights and the ingested
@@ -32,12 +32,12 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     HF_HOME=/opt/models \
     CASE_NAME=santacruz \
-    HOLLY_REQUIRE_AUTH=1
+    KENNY_REQUIRE_AUTH=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd -m -u 10001 holly
+    && useradd -m -u 10001 kenny
 
 COPY --from=build /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=build /usr/local/bin /usr/local/bin
@@ -46,12 +46,12 @@ COPY --from=build /app /app
 
 # The app writes the ledger, catalog and rule library, so it owns the case tree and the
 # volume — but not its own source. Nothing at runtime should be able to rewrite core/.
-RUN mkdir -p /data && chown -R holly:holly /data /app/cases && chmod +x /app/scripts/entrypoint.sh
+RUN mkdir -p /data && chown -R kenny:kenny /data /app/cases && chmod +x /app/scripts/entrypoint.sh
 
 WORKDIR /app
 # Container STARTS as root because platform-mounted volumes (Railway) arrive root-owned
 # and there is no pre-mount hook to chown them; the entrypoint fixes /data ownership and
-# immediately drops to the unprivileged `holly` user before serving. Fly chowns volumes
+# immediately drops to the unprivileged `kenny` user before serving. Fly chowns volumes
 # to the image user so this was invisible there — Railway does not.
 EXPOSE 8080
 

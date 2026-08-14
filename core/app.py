@@ -51,7 +51,7 @@ CASE_DIR = default_case_dir()
 TEMPLATES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 DEFAULT_YEAR = 2026  # assumed when a prompt gives a date without a year
 
-app = FastAPI(title="Holly")
+app = FastAPI(title="Kenny")
 # No-op locally; required on any shared deploy (see core/auth.py). The factory lets the
 # middleware ledger auth events (failed logins, role denials, CSRF blocks) without a
 # circular import.
@@ -61,7 +61,7 @@ auth.install(app, ledger_factory=lambda: _case().ledger())
 # multi-worker deploy swaps this for a shared queue (PRD §8B).
 _JOBS: dict[str, dict] = {}
 
-_MAX_UPLOAD_BYTES = int(os.environ.get("HOLLY_MAX_UPLOAD_MB", "50")) << 20
+_MAX_UPLOAD_BYTES = int(os.environ.get("KENNY_MAX_UPLOAD_MB", "50")) << 20
 
 
 # --------------------------------------------------------------------------- #
@@ -271,7 +271,7 @@ def _policy_answer(case, led, qid: str, prompt: str, department: str | None = No
     `lookup=True` serves a figure the documents already PUBLISH — a Step C rate off a
     salary schedule. It is the same retrieve-and-quote spine, and deliberately so: a
     published rate needs no rule, no golden and no engine, because there is no arithmetic
-    to get wrong. Routing it through costing made Holly refuse a number it was holding.
+    to get wrong. Routing it through costing made Kenny refuse a number it was holding.
     """
     cat = _catalog(case)
     backend = _backend(case)
@@ -468,7 +468,7 @@ def api_case():
             # Set on the shared deploy. A hosted link gets mistaken for a product; this
             # is a prototype on a synthetic corpus and every viewer must be told so
             # before they read a dollar figure off it.
-            "banner": os.environ.get("HOLLY_BANNER", "")}
+            "banner": os.environ.get("KENNY_BANNER", "")}
 
 
 # --------------------------------------------------------------------------- #
@@ -1128,7 +1128,7 @@ def _check_golden(case, rule_dicts: list[dict], golden: dict) -> tuple[bool, dic
         return True, {"scenario": golden.get("name", "golden"), "status": "pending",
                       "expected": golden.get("expected_total"), "actual": None,
                       "error": str(e),
-                      "note": "No live rule covers this scenario yet, so Holly refuses "
+                      "note": "No live rule covers this scenario yet, so Kenny refuses "
                               "to cost it rather than guessing. Approve the rules for "
                               "this unit and this check will run."}
     except Exception as e:
@@ -1139,7 +1139,7 @@ def _check_golden(case, rule_dicts: list[dict], golden: dict) -> tuple[bool, dic
 
 @app.get("/admin/coverage")
 def admin_coverage():
-    """How much of each contract has Holly actually modelled?
+    """How much of each contract has Kenny actually modelled?
 
     The question an HR Director asks, which a "64 rules drafted" counter cannot answer.
     Per document: clauses extracted, rules live, rules pending review, clauses blocked
@@ -1264,7 +1264,7 @@ async def admin_draft_scenario(request: Request):
 
     This is the rebuilt authoring model. Instead of drafting a whole 140-clause MOU into
     33 rules and hoping approve-all matches one grand total, a scenario names a real
-    known answer; Holly retrieves the handful of clauses that answer it, drafts just
+    known answer; Kenny retrieves the handful of clauses that answer it, drafts just
     those, and checks them against the paystub. Review collapses from ~33 rules to ~5,
     and a small focused drafting task is one the model gets right (roles, pay_basis,
     compounding differentials) where the whole-MOU task was fragile.

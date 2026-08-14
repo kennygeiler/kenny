@@ -50,7 +50,7 @@ def test_classify_intent_separates_published_rates_from_costing():
     """A dollar sign is not one question.
 
     A salary schedule PUBLISHES rates: nothing is computed, no rule is needed, and no rule
-    will ever be drafted from a rate table. Routing those to costing made Holly refuse a
+    will ever be drafted from a rate table. Routing those to costing made Kenny refuse a
     number it was holding — "no human-ratified rules" — for a question needing no rule.
     The test is whether arithmetic exists, not whether money is mentioned.
     """

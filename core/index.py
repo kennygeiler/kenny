@@ -257,7 +257,7 @@ class OpenSearchBackend(SearchBackend):  # pragma: no cover - needs a running cl
     """Production: hybrid BM25 (`match`) + kNN vector search over OpenSearch/Elastic.
     Same interface. Requires a reachable cluster (opensearch-py) + embeddings."""
 
-    def __init__(self, hosts, index_name="holly", dim=384):
+    def __init__(self, hosts, index_name="kenny", dim=384):
         self.hosts = hosts
         self.index_name = index_name
         self.dim = dim
@@ -314,7 +314,7 @@ def make_backend(case) -> SearchBackend:
     kind = os.environ.get("SEARCH_BACKEND", cfg.get("backend", "auto"))
     if kind == "opensearch":
         return OpenSearchBackend(cfg.get("hosts", ["http://localhost:9200"]),
-                                 cfg.get("index", "holly"))
+                                 cfg.get("index", "kenny"))
     path = case.path("search_index", "search_index.jsonl")
     if kind in ("auto", "hybrid") and embeddings_available():
         return LocalHybridBackend(path)

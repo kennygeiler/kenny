@@ -58,7 +58,7 @@ def test_keyed_chain_verifies(tmp_path, keyed):
 
 def test_rewrite_with_recompute_fails_without_key(tmp_path, keyed):
     """The attack verify() used to miss: edit event 1, recompute hashes 1..tail.
-    The attacker has the disk but not HOLLY_LEDGER_KEY, so the best they can do is a
+    The attacker has the disk but not KENNY_LEDGER_KEY, so the best they can do is a
     plain-SHA256 rechain — which verify() must reject."""
     led = _make(tmp_path, n=4)
     rows = _rows(led)

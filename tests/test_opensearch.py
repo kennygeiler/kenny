@@ -26,7 +26,7 @@ def backend():
     if not embeddings_available():
         pytest.skip("sentence-transformers not installed (kNN needs embeddings)")
     be = OpenSearchBackend([OPENSEARCH_URL],
-                           index_name=f"holly-test-{uuid.uuid4().hex[:8]}")
+                           index_name=f"kenny-test-{uuid.uuid4().hex[:8]}")
     yield be
     try:
         be._client().indices.delete(be.index_name)

@@ -1,6 +1,6 @@
-# Holly — Document-Grounded Costing & Policy Engine
+# Kenny — Document-Grounded Costing & Policy Engine
 
-Holly answers HR costing and policy questions directly from contract PDFs — with
+Kenny answers HR costing and policy questions directly from contract PDFs — with
 **deterministic math**, **clause-level bounding-box citations**, a **human approval
 gate**, and a **tamper-evident audit ledger**. The LLM only reads language and routes
 questions; it never computes the number.
@@ -20,8 +20,6 @@ onboarding playbook. · [`DEPLOY.md`](DEPLOY.md) — putting it behind a shared 
 
 The PRD owns *intent*; ARCHITECTURE owns *behaviour*. Where they overlap, ARCHITECTURE is
 the tiebreak.
-
-Use santa cruz case for Holly Case. Other cases are tests.
 
 ---
 

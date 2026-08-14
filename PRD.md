@@ -1,7 +1,7 @@
-# Holly — Labor Relations Costing & Intelligence for Government
+# Kenny — Labor Relations Costing & Intelligence for Government
 ### Product Requirements Document
 
-> Holly answers questions about a government's labor contracts — what a shift costs, what an
+> Kenny answers questions about a government's labor contracts — what a shift costs, what an
 > employee is entitled to, what a clause says — with **deterministic computation** and
 > **clause-level citations you can see on the page**. It is built for any public employer that
 > negotiates and administers collective bargaining agreements: cities, counties, districts, states.
@@ -27,9 +27,9 @@ and cannot show their work.** A confident, uncited dollar figure is worse than n
 believed once and distrusted forever. What government HR needs is an answer that is **fast, correct,
 and defensible**: every dollar traceable to the exact clause of the governing document.
 
-## 2. What Holly is
+## 2. What Kenny is
 
-Holly ingests a jurisdiction's contracts, converts the parts that compute money into an auditable,
+Kenny ingests a jurisdiction's contracts, converts the parts that compute money into an auditable,
 machine-executable form **under human approval**, and answers in plain language.
 
 **A contract is a rulebook, and pay is one chapter of it.** *"What does this holiday shift cost?"*,
@@ -56,9 +56,9 @@ and computes on the right; a human approves in between:
 | **HR operations / compliance** | load contracts, approve the rules drawn from them, inspect the record | Admin |
 | **Union · council · legal** | — | Nothing. The product's job is to make its output survive their scrutiny |
 
-That third row is the design constraint: **Holly's real audience never logs in.**
+That third row is the design constraint: **Kenny's real audience never logs in.**
 
-## 4. What Holly answers
+## 4. What Kenny answers
 
 | Intent | Example | How it is answered |
 |---|---|---|
@@ -117,7 +117,7 @@ trusts*.
 
 Labor decisions are made about **classes of employee, not individuals**. Nobody asks "what does
 *this named officer's* shift cost" — they ask *"what does a holiday shift cost for a graveyard
-sergeant,"* or *"what does a 3% raise cost for teacher level 1s."* So the subject Holly costs is a
+sergeant,"* or *"what does a 3% raise cost for teacher level 1s."* So the subject Kenny costs is a
 **classification** — a bag of attributes (classification, step, shift, certifications, base rate) —
 and **there are no employee names anywhere in the product.**
 
@@ -126,9 +126,9 @@ and **there are no employee names anywhere in the product.**
   answer        =  cost PER MEMBER of that classification
 ```
 
-Every answer is **per member**. Holly deliberately does not multiply by staffing counts — headcount
+Every answer is **per member**. Kenny deliberately does not multiply by staffing counts — headcount
 changes weekly, lives in the HR system, and the multiplication is arithmetic the reader does with a
-number they trust. Holly's job is the per-member figure that is *hard* to get right: the composed,
+number they trust. Kenny's job is the per-member figure that is *hard* to get right: the composed,
 cited, contract-correct amount.
 
 Why classifications, not people:
@@ -150,17 +150,17 @@ costing product itself never holds a name.
 
 ## 7. The trust model — how a contract becomes a defensible number
 
-The claim Holly has to earn: a real contract arrives as an unseen document, and the number that
+The claim Kenny has to earn: a real contract arrives as an unseen document, and the number that
 comes out the other side survives a union challenge. It earns it by **never letting a rule compute
 until it reproduces a known-correct answer.**
 
 **A known answer is a real paystub** (or, absent one, a figure an analyst worked out by hand). It
-names the classifications, the date, the inputs, and the per-member amount actually paid. To make Holly able to cost a
-scenario, you point it at that known answer; Holly retrieves only the clauses that scenario needs,
+names the classifications, the date, the inputs, and the per-member amount actually paid. To make Kenny able to cost a
+scenario, you point it at that known answer; Kenny retrieves only the clauses that scenario needs,
 drafts the handful of rules they require, and checks them against the amount. Only rules that
 reproduce the known answer can be approved.
 
-This inverts the naive approach. Holly does **not** extract an entire contract into hundreds of
+This inverts the naive approach. Kenny does **not** extract an entire contract into hundreds of
 rules and ask a human to trust them. It models **only what a real paycheck can prove**, one scenario
 at a time. A pay branch with no known answer is not broken — it is *not yet covered*, and honestly
 shown as such.
@@ -217,7 +217,7 @@ figure was produced by a model.
 | **Documents** | load contracts; each becomes searchable immediately (policy Q&A works before any rule exists) |
 | **Verification** | the known answers; press *Draft the rules for this scenario* to author and check the rules a paystub needs |
 | **Review queue** | the handful of drafted rules awaiting approval, each checkable against its clause |
-| **Rule library** | the contract as Holly executes it, in three honest parts: what **computes** (approved rules), what Holly **declined to model** (clauses paying on a dimension the classification table lacks — named, so it can be added), and what is answered by **quoting**. The page to hand an auditor |
+| **Rule library** | the contract as Kenny executes it, in three honest parts: what **computes** (approved rules), what Kenny **declined to model** (clauses paying on a dimension the classification table lacks — named, so it can be added), and what is answered by **quoting**. The page to hand an auditor |
 | **Audit** | the tamper-evident ledger; export for council, union, or legal |
 
 ## 10. Build status (honest)
@@ -272,12 +272,12 @@ login opens both surfaces. A reviewer can verify every claim in this document in
    *declined* (the drafted FLSA 182-hour cycle rules were reviewed and not approved — a
    different pay branch).
 5. **Ask something unanswerable** — a costing question for a unit with no approved rules →
-   Holly **refuses with a reason** rather than guessing.
+   Kenny **refuses with a reason** rather than guessing.
 6. **Audit** — every step of everything above, in the tamper-evident ledger.
 
 ## 13. Non-goals
 
-Holly does not give legal advice, does not decide contract interpretation where the language is
+Kenny does not give legal advice, does not decide contract interpretation where the language is
 genuinely ambiguous (it surfaces the ambiguity and asks), does not act on the user's behalf beyond
 answering, and does not present an extrapolation as a reconciled fact. It is a decision-support tool
 whose output a human owns.

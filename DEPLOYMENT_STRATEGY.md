@@ -1,4 +1,4 @@
-# Bringing Holly to a New Government — Deployment Strategy
+# Bringing Kenny to a New Government — Deployment Strategy
 ### Interview reference · how an engagement actually pans out
 
 > The one-line thesis: **we don't install software, we establish trust — and we do it

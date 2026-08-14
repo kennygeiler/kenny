@@ -15,21 +15,21 @@ VOLUME_CASE="/data/cases/${CASE_NAME}"
 # container starts as root, takes ownership of /data, and IMMEDIATELY drops to the
 # unprivileged app user for everything else — including the server itself.
 if [ "$(id -u)" = "0" ]; then
-  chown -R holly:holly /data
-  exec su -p holly -s /bin/sh -c "exec /app/scripts/entrypoint.sh"
+  chown -R kenny:kenny /data
+  exec su -p kenny -s /bin/sh -c "exec /app/scripts/entrypoint.sh"
 fi
 
-# HOLLY_SEED_FORCE=1 replaces the volume's copy of the case with the image's — for
+# KENNY_SEED_FORCE=1 replaces the volume's copy of the case with the image's — for
 # shipping a corrected corpus/rule library to a demo. The old case (ledger included) is
 # ARCHIVED beside it, never deleted: an audit trail one env var away from destruction
 # is not an audit trail. A second env var must agree, so a single stray setting cannot
 # trigger the reseed on its own.
-if [ "${HOLLY_SEED_FORCE:-0}" = "1" ] && [ -d "${VOLUME_CASE}" ]; then
-  if [ "${HOLLY_SEED_FORCE_CONFIRM:-}" != "yes" ]; then
-    echo "[entrypoint] HOLLY_SEED_FORCE=1 set but HOLLY_SEED_FORCE_CONFIRM!=yes — refusing to reseed"
+if [ "${KENNY_SEED_FORCE:-0}" = "1" ] && [ -d "${VOLUME_CASE}" ]; then
+  if [ "${KENNY_SEED_FORCE_CONFIRM:-}" != "yes" ]; then
+    echo "[entrypoint] KENNY_SEED_FORCE=1 set but KENNY_SEED_FORCE_CONFIRM!=yes — refusing to reseed"
   else
     STAMP="$(date +%Y%m%d-%H%M%S)"
-    echo "[entrypoint] HOLLY_SEED_FORCE — archiving ${VOLUME_CASE} to ${VOLUME_CASE}.pre-reseed.${STAMP}"
+    echo "[entrypoint] KENNY_SEED_FORCE — archiving ${VOLUME_CASE} to ${VOLUME_CASE}.pre-reseed.${STAMP}"
     mv "${VOLUME_CASE}" "${VOLUME_CASE}.pre-reseed.${STAMP}"
   fi
 fi

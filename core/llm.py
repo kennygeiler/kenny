@@ -86,9 +86,6 @@ _COST_CUES = ("cost", "calculate", "how much", "total ", "pay for", "what will i
 _POLICY_STRONG = ("eligible", "what does", "say about", "allowed", "explain", "define",
                   "entitled", "does the", "is a ", "are ", "can a ", "who qualifies",
                   "what happens", "rules for", "policy on", "how many days")
-_POLICY_CUES = _POLICY_STRONG + ("what is", "when ", "who ", "require", "mean")
-
-
 # "how many bereavement DAYS", "how much vacation do I ACCRUE", "DEADLINE to file"
 _ENTITLEMENT_RE = re.compile(
     r"how (many|much)\b[^?]*\b(day|days|hour|hours|shift|shifts|week|weeks|leave|"
@@ -109,7 +106,7 @@ _COMPUTE_RE = re.compile(
 def classify_intent(prompt: str) -> str:
     """Return 'costing' | 'lookup' | 'entitlement' | 'policy'.
 
-    Holly answers questions about MOUs; costing is one KIND of question:
+    Kenny answers questions about MOUs; costing is one KIND of question:
       costing     -> a dollar amount to COMPUTE     ("what does this shift cost?")
       lookup      -> a dollar amount already PRINTED ("what is a Sergeant's Step C rate?")
       entitlement -> a determinate non-money value  ("how many bereavement days?")
@@ -117,7 +114,7 @@ def classify_intent(prompt: str) -> str:
 
     `lookup` exists because "$" is not the same question twice. A salary schedule
     PUBLISHES rates; nothing is computed, no rules are needed, and no rule will ever be
-    drafted from a rate table. Routing those to costing made Holly refuse a number it was
+    drafted from a rate table. Routing those to costing made Kenny refuse a number it was
     holding — "I can't cost this: no human-ratified rules" — for a question that needed no
     rule at all. The distinguishing test is not the dollar sign, it is whether an
     arithmetic step exists: a cost is DERIVED from a person, hours and a date; a rate is

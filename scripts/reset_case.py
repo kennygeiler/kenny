@@ -40,7 +40,7 @@ def main(case_rel: str, stage_dir: str, keep_sources: bool = False) -> int:
         print(f"not a case directory: {case_dir}", file=sys.stderr)
         return 1
 
-    backup = os.path.expanduser(f"~/holly_backup_{time.strftime('%Y%m%d-%H%M%S')}")
+    backup = os.path.expanduser(f"~/kenny_backup_{time.strftime('%Y%m%d-%H%M%S')}")
     os.makedirs(backup, exist_ok=True)
     for rel in ["rules", "ledger.jsonl", "catalog.json", "snapshots"]:
         src = os.path.join(case_dir, rel)
@@ -54,7 +54,7 @@ def main(case_rel: str, stage_dir: str, keep_sources: bool = False) -> int:
 
     if keep_sources:
         # The documents stay put: this is a customer dropping a bundle of contracts and
-        # pressing Ingest. Everything Holly LEARNED from them is still wiped — catalog,
+        # pressing Ingest. Everything Kenny LEARNED from them is still wiped — catalog,
         # index, drafts, ratified rules, ledger — so the run is blind either way. What
         # differs is only whether the upload path is exercised.
         print(f"sources   -> kept in place ({len(pdfs)} PDFs) — Ingest will read them")
@@ -110,5 +110,5 @@ if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     keep = "--keep-sources" in sys.argv
     case = args[0] if args else "cases/santacruz"
-    stage = args[1] if len(args) > 1 else "~/Holly_Test_Documents"
+    stage = args[1] if len(args) > 1 else "~/Kenny_Test_Documents"
     raise SystemExit(main(case, stage, keep_sources=keep))

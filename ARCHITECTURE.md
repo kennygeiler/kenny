@@ -1,7 +1,7 @@
-# Holly — Technical Architecture
+# Kenny — Technical Architecture
 ### Engineering companion to the PRD
 
-> The PRD says what Holly is and why. This says how it is built: the structures, the contracts
+> The PRD says what Kenny is and why. This says how it is built: the structures, the contracts
 > between them, and the invariants a change must preserve. Where they overlap, the PRD owns intent
 > and this owns behaviour.
 >
@@ -48,7 +48,7 @@ property of the deterministic layer plus a human gate — not of the model.
 | `catalog.py` | per-document index: title, department, tags, summary, clauses | candidate identification |
 | `caseio.py` | case bundle loader; the rule vocabulary (`known_facts`, values, scenarios) | one source of truth for what a rule may reference |
 | `dataadapter.py` | `DataSource`: CSV today, DB/API behind the same interface | classification-table source is swappable |
-| `ledger.py` | hash-chained append-only event log + `verify()`; events HMAC-signed under `HOLLY_LEDGER_KEY` (kept off-volume) with the head hash anchored to platform logs | tamper-evident audit — rewrite needs the key, truncation fails the anchored head |
+| `ledger.py` | hash-chained append-only event log + `verify()`; events HMAC-signed under `KENNY_LEDGER_KEY` (kept off-volume) with the head hash anchored to platform logs | tamper-evident audit — rewrite needs the key, truncation fails the anchored head |
 | `audit.py` | per-query trail assembly; frozen answer snapshots | an answer stays reproducible after the contract renews |
 | `pdfview.py` | render a page and overlay the citation box | citations you can *see* |
 | `auth.py` | two-role auth, per-IP rate limit, refuse-to-start-misconfigured | a shared link must not hand out the approval gate |

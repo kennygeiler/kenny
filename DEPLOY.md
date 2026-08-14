@@ -1,4 +1,4 @@
-# Deploying Holly to a shared link
+# Deploying Kenny to a shared link
 
 **What this is for.** Putting the prototype behind a URL so a handful of named people can
 try it. It is **not** a production posture — see "What this deploy is not" below, and say
@@ -12,31 +12,31 @@ so out loud when you share the link.
 | Every visitor spends your Anthropic budget | Per-client rate limit on `POST /chat` (default 20/min; real client IP via `Fly-Client-IP` on Fly) |
 | Online password guessing | Exponential backoff after repeated failed logins, attempts ledgered |
 | Cross-site request forgery | State-changing requests from a foreign `Origin` are refused |
-| Ledger rewritable by anyone with disk access | Events HMAC-signed with `HOLLY_LEDGER_KEY` (kept in the secret store, never on the volume); head hash anchored to platform logs |
+| Ledger rewritable by anyone with disk access | Events HMAC-signed with `KENNY_LEDGER_KEY` (kept in the secret store, never on the volume); head hash anchored to platform logs |
 | Ledger corrupts under concurrent writes | Serialised append (in-process lock + `flock`) — `core/ledger.py` |
 | Ledger dies on redeploy | Persistent volume at `/data`, seeded from the image on first boot |
 | 4-minute cold-start ingest | Corpus + models baked at **build** time — `scripts/prepare_deploy.py` |
 | Multi-worker forks the audit trail | `--workers 1`, `min_machines_running = 1` |
-| A demo link reads as a product | Standing `HOLLY_BANNER` on both surfaces |
+| A demo link reads as a product | Standing `KENNY_BANNER` on both surfaces |
 
 ## Deploy (Fly.io)
 
 ```sh
 fly launch --no-deploy --copy-config      # creates the app from fly.toml; keep the name
-fly volumes create holly_data --size 3 --region sjc
+fly volumes create kenny_data --size 3 --region sjc
 
 # Secrets are set OUT of band and never enter the image (.dockerignore excludes .env).
 fly secrets set ANTHROPIC_API_KEY=...        # paste it yourself; it is never echoed
-fly secrets set HOLLY_VIEWER_PASSWORD="$(openssl rand -base64 18)"
-fly secrets set HOLLY_ADMIN_PASSWORD="$(openssl rand -base64 18)"
-fly secrets set HOLLY_LEDGER_KEY="$(openssl rand -base64 32)"   # audit-chain HMAC key
+fly secrets set KENNY_VIEWER_PASSWORD="$(openssl rand -base64 18)"
+fly secrets set KENNY_ADMIN_PASSWORD="$(openssl rand -base64 18)"
+fly secrets set KENNY_LEDGER_KEY="$(openssl rand -base64 32)"   # audit-chain HMAC key
 fly secrets list                             # names only; read the values from your manager
 
 fly deploy --remote-only                  # no local Docker needed; ~15 min first build
 fly open
 ```
 
-`HOLLY_REQUIRE_AUTH=1` is baked into the image: **if either password or the ledger HMAC
+`KENNY_REQUIRE_AUTH=1` is baked into the image: **if either password or the ledger HMAC
 key is missing the app refuses to boot** rather than quietly serving the admin panel to
 the internet (or an audit trail anyone with the disk could rewrite). Verified by
 `tests/test_auth.py::test_deploy_refuses_to_start_without_passwords` and

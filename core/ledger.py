@@ -10,11 +10,11 @@ TAMPER MODEL. A plain hash chain only proves internal consistency: an attacker w
 disk access can rewrite event N and recompute every hash after it, or truncate the
 tail, and the chain still verifies. Two mechanisms close that gap:
 
-  1. HMAC. With HOLLY_LEDGER_KEY set (a secret that must NOT live on the same volume
+  1. HMAC. With KENNY_LEDGER_KEY set (a secret that must NOT live on the same volume
      as the ledger — it belongs in the platform's secret store), every event hash is
      HMAC-SHA256 under that key. Rewriting the chain now requires the key, and
      `verify()` refuses any event that was not keyed.
-  2. Head anchoring. When keyed, every append emits `HOLLY_LEDGER_HEAD seq=N hash=…`
+  2. Head anchoring. When keyed, every append emits `KENNY_LEDGER_HEAD seq=N hash=…`
      to stdout, so the platform's log retention holds an external record of the head.
      `verify_anchor(seq, hash)` checks a recorded head against the current file —
      a truncated tail no longer contains the anchored event and fails.
@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - non-POSIX
     fcntl = None
 
 GENESIS = "0" * 64
-KEY_ENV = "HOLLY_LEDGER_KEY"
+KEY_ENV = "KENNY_LEDGER_KEY"
 
 
 def _key() -> bytes | None:
@@ -119,7 +119,7 @@ class Ledger:
         if key is not None:
             # External anchor: platform log retention holds the head outside the volume,
             # so a truncated file can be caught against the last anchored head.
-            print(f"HOLLY_LEDGER_HEAD seq={event['seq']} hash={event['hash']}", flush=True)
+            print(f"KENNY_LEDGER_HEAD seq={event['seq']} hash={event['hash']}", flush=True)
         return event
 
     # ---- read ----
@@ -141,7 +141,7 @@ class Ledger:
     def verify(self) -> tuple[bool, str]:
         """Recompute the whole chain.
 
-        With HOLLY_LEDGER_KEY set, every event MUST verify under the HMAC — an event
+        With KENNY_LEDGER_KEY set, every event MUST verify under the HMAC — an event
         hashed without the key fails, because accepting unkeyed events would let an
         attacker rewrite the file as a plain (keyless) chain and pass. A ledger written
         before the key was configured therefore fails verification once the key is on:
@@ -156,7 +156,7 @@ class Ledger:
             if ev["prev_hash"] != prev_hash:
                 return False, f"broken chain at seq {ev['seq']}: prev_hash mismatch"
             if key is not None and ev.get("alg") != "hmac-sha256":
-                return False, (f"unkeyed event at seq {ev['seq']}: HOLLY_LEDGER_KEY is "
+                return False, (f"unkeyed event at seq {ev['seq']}: KENNY_LEDGER_KEY is "
                                f"set but this event predates it (or was rewritten "
                                f"without the key). Archive the old ledger or unset the key.")
             recomputed = _hash(prev_hash, ev["seq"], ev["ts"], ev["actor"],

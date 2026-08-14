@@ -1,4 +1,4 @@
-# Holly — Path to 10/10 Backlog
+# Kenny — Path to 10/10 Backlog
 
 > **STATUS (2026-08-14): implemented.** All epics landed on this branch, one commit per
 > epic (A2/A1/A3 in "Provenance integrity…", B in "Chat correctness…", C in "Auth
@@ -10,7 +10,7 @@
 > - C6 "/api/case reveals whether an API key is set" — kept; the endpoint is already
 >   behind auth and the chat badge is built from it.
 > - A7 runs docling OCR in-band with pinned options; the OCR-tier test is opt-in
->   (HOLLY_TEST_OCR=1) because it downloads models and takes minutes.
+>   (KENNY_TEST_OCR=1) because it downloads models and takes minutes.
 
 Source: full-code audit 2026-08-14 (three passes: ingest/provenance, auth/security, chat/retrieval).
 Each ticket is self-contained: problem, evidence (file:line), acceptance criteria.
@@ -44,13 +44,13 @@ in seconds; `verify()` passes. Deleting tail lines also passes (any prefix is a
 valid chain). This defeats the ledger's own docstring claim
 (`core/ledger.py:1-7`) and the "survives scrutiny" pitch.
 **Evidence.** `core/ledger.py:109-123` (verify), no HMAC/signature anywhere.
-**Fix.** (a) HMAC-SHA256 each event with `HOLLY_LEDGER_KEY` env secret (not on
+**Fix.** (a) HMAC-SHA256 each event with `KENNY_LEDGER_KEY` env secret (not on
 volume); (b) publish head hash externally on every append or on interval —
 minimum viable: log line to stdout (Fly log retention) + `/admin/ledger/export`
 embeds head hash + count so an exported copy proves later truncation.
 **Accept.** Test: rewrite event + recompute → verify fails without key. Test:
 truncate tail → verify against recorded head/count fails. Boot fails closed if
-`HOLLY_REQUIRE_AUTH=1` and ledger key missing.
+`KENNY_REQUIRE_AUTH=1` and ledger key missing.
 
 ### A3. Re-validate frozen citations after re-ingest — P0
 **Problem.** Rules freeze page+bbox at draft time. Re-ingest a revised MOU →
@@ -216,7 +216,7 @@ single active ingest job, completed jobs pruned.
 ### C6. Quiet `/healthz` + guard misc edges — P3
 **Problem.** Unauthenticated `/healthz` leaks tamper detail ("tampered event at
 seq N"); `doc_page` 500s on non-numeric `bbox`; `/api/case` reveals whether an
-API key is set; `HOLLY_SEED_FORCE=1` deletes live ledger.
+API key is set; `KENNY_SEED_FORCE=1` deletes live ledger.
 **Evidence.** `core/app.py:289-295,571`; `scripts/entrypoint.sh:25-28`.
 **Fix.** healthz returns ok/fail only (detail behind auth); 400 on bad bbox;
 key presence admin-only; SEED_FORCE requires second confirmation env var and

@@ -74,8 +74,8 @@ def test_scan_pdf_yields_empty_not_garbage(scan_pdf, monkeypatch):
     assert clauses == [] and text == ""
 
 
-@pytest.mark.skipif(not os.environ.get("HOLLY_TEST_OCR"),
-                    reason="set HOLLY_TEST_OCR=1 to run the in-band docling OCR tier "
+@pytest.mark.skipif(not os.environ.get("KENNY_TEST_OCR"),
+                    reason="set KENNY_TEST_OCR=1 to run the in-band docling OCR tier "
                            "(downloads models, takes minutes)")
 def test_docling_ocr_reads_a_scan_in_band(scan_pdf):
     clauses, text, source = parse_pdf(scan_pdf, "scan")

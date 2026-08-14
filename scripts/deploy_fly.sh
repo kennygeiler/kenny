@@ -5,7 +5,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-APP="holly-demo-kg-0717"
+APP="kenny-demo-kg-0717"
 
 echo "==> whoami"
 fly auth whoami
@@ -14,8 +14,8 @@ echo "==> create app (idempotent)"
 fly apps create "$APP" 2>/dev/null || echo "    app $APP already exists"
 
 echo "==> persistent volume for the ledger (idempotent)"
-fly volumes list -a "$APP" 2>/dev/null | grep -q holly_data \
-  || fly volumes create holly_data --size 3 --region sjc -a "$APP" --yes
+fly volumes list -a "$APP" 2>/dev/null | grep -q kenny_data \
+  || fly volumes create kenny_data --size 3 --region sjc -a "$APP" --yes
 
 echo "==> secrets (values read from .env / openssl; not echoed)"
 KEY="$(grep '^ANTHROPIC_API_KEY=' .env | cut -d= -f2- | tr -d '\"'"'"' \r')"
@@ -27,10 +27,10 @@ ADMIN="$(openssl rand -base64 18)"
 LEDGER_KEY="$(openssl rand -base64 32)"
 fly secrets set -a "$APP" \
   ANTHROPIC_API_KEY="$KEY" \
-  HOLLY_VIEWER_PASSWORD="$VIEWER" \
-  HOLLY_ADMIN_PASSWORD="$ADMIN" \
-  HOLLY_LEDGER_KEY="$LEDGER_KEY" \
-  HOLLY_REQUIRE_AUTH=1
+  KENNY_VIEWER_PASSWORD="$VIEWER" \
+  KENNY_ADMIN_PASSWORD="$ADMIN" \
+  KENNY_LEDGER_KEY="$LEDGER_KEY" \
+  KENNY_REQUIRE_AUTH=1
 
 echo "==> deploy (prepare_deploy runs in the build; refuses if any known answer fails)"
 fly deploy -a "$APP" --ha=false
@@ -46,4 +46,4 @@ echo " Admin:   $ADMIN"
 echo "============================================================"
 echo " Share the URL + the VIEWER password (chat + documents only)."
 echo " Keep ADMIN to yourself — it alone opens /admin (ratify, upload, ledger)."
-echo " Rotate both after the demo: fly secrets set HOLLY_VIEWER_PASSWORD=..."
+echo " Rotate both after the demo: fly secrets set KENNY_VIEWER_PASSWORD=..."

@@ -16,7 +16,7 @@ internet it needs four things it does not otherwise have:
      cached Basic credentials to cross-site form POSTs, so without this a hostile page
      could replace a contract PDF via /admin/upload using the admin's own browser.
 
-Set HOLLY_REQUIRE_AUTH=1 (the Dockerfile does) and a deploy missing its passwords or
+Set KENNY_REQUIRE_AUTH=1 (the Dockerfile does) and a deploy missing its passwords or
 its ledger HMAC key fails at startup rather than silently serving the admin panel to
 the world.
 """
@@ -34,7 +34,7 @@ from starlette.responses import JSONResponse, Response
 _UNAUTHORIZED = Response(
     status_code=401,
     content="Authentication required.",
-    headers={"WWW-Authenticate": 'Basic realm="Holly", charset="UTF-8"'},
+    headers={"WWW-Authenticate": 'Basic realm="Kenny", charset="UTF-8"'},
 )
 
 
@@ -237,35 +237,35 @@ class AccessMiddleware(BaseHTTPMiddleware):
 
 def install(app, ledger_factory=None) -> None:
     """Attach access control if configured. Raises if a deploy asks for auth and can't have it."""
-    viewer_pw = os.environ.get("HOLLY_VIEWER_PASSWORD", "")
-    admin_pw = os.environ.get("HOLLY_ADMIN_PASSWORD", "")
-    required = os.environ.get("HOLLY_REQUIRE_AUTH", "").lower() in ("1", "true", "yes")
+    viewer_pw = os.environ.get("KENNY_VIEWER_PASSWORD", "")
+    admin_pw = os.environ.get("KENNY_ADMIN_PASSWORD", "")
+    required = os.environ.get("KENNY_REQUIRE_AUTH", "").lower() in ("1", "true", "yes")
 
     if not (viewer_pw and admin_pw):
         if required:
             raise RuntimeError(
-                "HOLLY_REQUIRE_AUTH is set but HOLLY_VIEWER_PASSWORD and/or "
-                "HOLLY_ADMIN_PASSWORD are missing. Refusing to start: this would serve "
+                "KENNY_REQUIRE_AUTH is set but KENNY_VIEWER_PASSWORD and/or "
+                "KENNY_ADMIN_PASSWORD are missing. Refusing to start: this would serve "
                 "the admin panel, the rule-ratify gate and the API key's spend to "
                 "anyone with the URL."
             )
         return  # local dev: open, as before
 
-    if required and not os.environ.get("HOLLY_LEDGER_KEY", "").strip():
+    if required and not os.environ.get("KENNY_LEDGER_KEY", "").strip():
         raise RuntimeError(
-            "HOLLY_REQUIRE_AUTH is set but HOLLY_LEDGER_KEY is missing. Refusing to "
+            "KENNY_REQUIRE_AUTH is set but KENNY_LEDGER_KEY is missing. Refusing to "
             "start: without the HMAC key the audit ledger is only internally "
             "consistent — anyone with volume access could rewrite it and verify() "
-            "would still pass. Set HOLLY_LEDGER_KEY in the platform's secret store "
+            "would still pass. Set KENNY_LEDGER_KEY in the platform's secret store "
             "(never on the data volume)."
         )
 
     if _equal(viewer_pw, admin_pw):
         raise RuntimeError(
-            "HOLLY_VIEWER_PASSWORD and HOLLY_ADMIN_PASSWORD are identical, which "
+            "KENNY_VIEWER_PASSWORD and KENNY_ADMIN_PASSWORD are identical, which "
             "collapses the reviewer/asker separation the review gate depends on (PRD §2)."
         )
 
-    limit = int(os.environ.get("HOLLY_CHAT_RATE_LIMIT", "20"))
+    limit = int(os.environ.get("KENNY_CHAT_RATE_LIMIT", "20"))
     app.add_middleware(AccessMiddleware, viewer_pw=viewer_pw, admin_pw=admin_pw,
                        chat_limit=limit, ledger_factory=ledger_factory)
