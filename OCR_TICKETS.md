@@ -6,9 +6,9 @@ produces clause-level provenance (1,861 clauses with `page`, `bbox`, `kind`, per
 viewer can see and trust. Build in numbered order; each ticket is self-contained.
 
 > **STATUS (2026-08-14):** OCR-1 (X-ray, `eeb617d`), OCR-3 (scorecard, `8b23884`),
-> OCR-4 (tier chips, `c71ccc6`), OCR-2 (side-by-side, `8bea6f8`) and OCR-5
-> (table X-ray, `e26394e`) are DONE.
-> Remaining, in order: OCR-6 (live scan demo), OCR-7 (confidence capture).
+> OCR-4 (tier chips, `c71ccc6`), OCR-2 (side-by-side, `8bea6f8`), OCR-5
+> (table X-ray, `e26394e`) and OCR-6 (live scan demo, `0d37370`) are DONE.
+> Remaining: OCR-7 (confidence capture).
 > Known data limitation: the shipped santacruz catalog predates per-row table bboxes
 > and sha recording — a re-ingest with docling refreshes both; the X-ray merges
 > shared-bbox rows into one box until then.
@@ -101,7 +101,7 @@ highlight. Entry: automatic when a page's clauses are majority table rows.
 **Accept.** Master salary schedule page renders as a table whose rows highlight
 their exact source band.
 
-## OCR-6 — Live scan demo
+## OCR-6 — Live scan demo — DONE (`0d37370`)
 **What.** Upload an image-only PDF and *watch* the tiers run: job progress shows
 parse tier chosen, clause count ticking, then boxes appear in X-ray.
 **How.** `_ingest_worker`/upload already async-job'd; add per-doc `stage` field to
