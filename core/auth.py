@@ -2,16 +2,23 @@
 
 Locally this file does nothing: with no passwords set, `install()` leaves the app open
 so `uvicorn core.app:app` still just works. The moment the app is reachable from the
-internet it needs three things it does not otherwise have:
+internet it needs four things it does not otherwise have:
 
   1. A password, because /admin can ratify rules and delete the document library.
-  2. A SECOND password on /admin, because "can ask questions" and "can decide what the
-     contract means" are different jobs held by different people (PRD §2).
-  3. A rate limit on /chat, because every prompt spends the operator's Anthropic budget.
-     Without this, one visitor with a loop drains the account.
+  2. A SECOND password on /admin — ENFORCED per-path (TICKETS.md C1): "can ask
+     questions" and "can decide what the contract means" are different jobs held by
+     different people (PRD §2). The viewer credential opens chat and documents; only
+     the admin credential opens /admin/*.
+  3. A rate limit on /chat, because every prompt spends the operator's Anthropic
+     budget, plus a throttle on FAILED logins (TICKETS.md C3) so the passwords can't
+     be guessed online at full speed.
+  4. An Origin check on state-changing requests (TICKETS.md C2): browsers attach
+     cached Basic credentials to cross-site form POSTs, so without this a hostile page
+     could replace a contract PDF via /admin/upload using the admin's own browser.
 
-Set HOLLY_REQUIRE_AUTH=1 (the Dockerfile does) and a deploy missing its passwords fails
-at startup rather than silently serving the admin panel to the world.
+Set HOLLY_REQUIRE_AUTH=1 (the Dockerfile does) and a deploy missing its passwords or
+its ledger HMAC key fails at startup rather than silently serving the admin panel to
+the world.
 """
 from __future__ import annotations
 
@@ -48,6 +55,40 @@ def _credentials(request) -> tuple[str, str] | None:
     return user, pw
 
 
+def _client_ip(request) -> str:
+    """The real client, not the proxy (TICKETS.md C4).
+
+    On Fly every connection arrives from the proxy, so request.client.host is the
+    proxy's address and 'per-IP' limits collapse into one shared bucket — one runaway
+    visitor 429s everyone. Fly-Client-IP is trusted ONLY when we are actually on Fly
+    (FLY_APP_NAME is set by the platform); locally a spoofable header must not let a
+    client choose its own bucket.
+    """
+    if os.environ.get("FLY_APP_NAME"):
+        fly = request.headers.get("fly-client-ip", "").strip()
+        if fly:
+            return fly
+    return request.client.host if request.client else "unknown"
+
+
+def _origin_ok(request) -> bool:
+    """Reject state-changing requests whose Origin names ANOTHER site (CSRF).
+
+    Browsers send Origin on every cross-site POST (including the text/plain form
+    trick), so a hostile page cannot avoid presenting one — and cannot forge ours.
+    A missing Origin means a non-browser client (curl, tests); those don't carry
+    ambient credentials, which is the thing CSRF exploits, so they pass.
+    """
+    origin = request.headers.get("origin", "").strip()
+    if not origin:
+        return True
+    if origin.lower() == "null":            # sandboxed-iframe / data: URL attacker
+        return False
+    host = request.headers.get("host", "")
+    _, _, origin_host = origin.partition("://")
+    return origin_host.lower() == host.lower()
+
+
 class RateLimiter:
     """Fixed-window per-IP counter. Cheap, in-process, and enough for a shared demo.
 
@@ -76,32 +117,116 @@ class RateLimiter:
             return True
 
 
+class FailureThrottle:
+    """Exponential backoff on FAILED authentication, per client (TICKETS.md C3).
+
+    The deploy script generates 144-bit passwords, but DEPLOY.md lets an operator set
+    a memorable one by hand — and an unthrottled Basic-auth prompt is an online oracle.
+    After `free` misses, each further miss doubles a lockout (capped), and successes
+    clear it. In-process state is enough for the single-worker demo posture.
+    """
+
+    def __init__(self, free: int = 5, base_s: float = 2.0, cap_s: float = 300.0):
+        self.free, self.base_s, self.cap_s = free, base_s, cap_s
+        self._misses: dict[str, tuple[int, float]] = {}   # key -> (count, locked_until)
+        self._lock = threading.Lock()
+
+    def locked_for(self, key: str) -> float:
+        with self._lock:
+            _, until = self._misses.get(key, (0, 0.0))
+            return max(0.0, until - time.time())
+
+    def record_failure(self, key: str) -> int:
+        with self._lock:
+            count, _ = self._misses.get(key, (0, 0.0))
+            count += 1
+            delay = 0.0
+            if count > self.free:
+                delay = min(self.cap_s, self.base_s * (2 ** (count - self.free - 1)))
+            self._misses[key] = (count, time.time() + delay)
+            if len(self._misses) > 4096:
+                now = time.time()
+                self._misses = {k: v for k, v in self._misses.items()
+                                if v[1] > now or v[0] > self.free}
+            return count
+
+    def reset(self, key: str) -> None:
+        with self._lock:
+            self._misses.pop(key, None)
+
+
 class AccessMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, viewer_pw: str, admin_pw: str, chat_limit: int):
+    def __init__(self, app, viewer_pw: str, admin_pw: str, chat_limit: int,
+                 ledger_factory=None):
         super().__init__(app)
         self.viewer_pw, self.admin_pw = viewer_pw, admin_pw
         self.limiter = RateLimiter(chat_limit)
+        self.failures = FailureThrottle()
+        self._ledger_factory = ledger_factory
+
+    def _ledger(self, type_: str, payload: dict) -> None:
+        """Best-effort audit of auth events — a ledger problem must never take the
+        auth path down with it."""
+        if self._ledger_factory is None:
+            return
+        try:
+            self._ledger_factory().append(type_, payload, actor="auth")
+        except Exception:
+            pass
 
     async def dispatch(self, request, call_next):
         path = request.url.path
         if path == "/healthz":  # the platform's probe has no credentials
             return await call_next(request)
 
+        ip = _client_ip(request)
+
+        remaining = self.failures.locked_for(ip)
+        if remaining > 0:
+            return JSONResponse(
+                {"error": "Too many failed sign-in attempts. Wait and try again."},
+                status_code=429, headers={"Retry-After": str(int(remaining) + 1)})
+
         creds = _credentials(request)
         if not creds:
             return _UNAUTHORIZED
         _user, pw = creds
 
-        # DEMO POSTURE: one password opens everything — /admin included — so a reviewer
-        # with the shared link can walk the whole loop (ingest → draft → approve) without
-        # a second credential. The viewer/admin role split still exists in config for
-        # when the link stops being a demo; this just stops enforcing it per-path.
-        if not (_equal(pw, self.admin_pw) or _equal(pw, self.viewer_pw)):
+        is_admin = _equal(pw, self.admin_pw)
+        is_viewer = _equal(pw, self.viewer_pw)
+        if not (is_admin or is_viewer):
+            count = self.failures.record_failure(ip)
+            # Ledger the first miss past the free allowance and every 10th after —
+            # the trail must show a guessing campaign without letting the campaign
+            # itself flood the ledger.
+            if count == self.failures.free + 1 or count % 10 == 0:
+                self._ledger("auth.failed", {"ip": ip, "path": path, "count": count})
             return _UNAUTHORIZED
+        self.failures.reset(ip)
+
+        # ROLE SPLIT (TICKETS.md C1): /admin/* — the ratify gate, uploads, ingest, the
+        # full ledger — requires the ADMIN credential. The viewer password opens chat
+        # and the documents it cites, exactly what DEPLOY.md promises when it says
+        # "share the viewer password".
+        if path == "/admin" or path.startswith("/admin/"):
+            if not is_admin:
+                self._ledger("auth.denied",
+                             {"ip": ip, "path": path, "role": "viewer"})
+                return JSONResponse(
+                    {"error": "The admin surface needs the admin password — the "
+                              "viewer credential only opens chat."}, status_code=403)
+
+        # CSRF (TICKETS.md C2): a state-changing request from another origin rides the
+        # browser's cached credentials, not the user's intent.
+        if request.method not in ("GET", "HEAD", "OPTIONS") and not _origin_ok(request):
+            self._ledger("auth.csrf_blocked",
+                         {"ip": ip, "path": path,
+                          "origin": request.headers.get("origin", "")})
+            return JSONResponse({"error": "cross-origin request refused"},
+                                status_code=403)
 
         if path == "/chat" and request.method == "POST":
-            who = request.client.host if request.client else "unknown"
-            if not self.limiter.allow(who):
+            if not self.limiter.allow(ip):
                 return JSONResponse(
                     {"error": "Too many questions in the last minute. Wait a moment and "
                               "ask again."},
@@ -110,7 +235,7 @@ class AccessMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def install(app) -> None:
+def install(app, ledger_factory=None) -> None:
     """Attach access control if configured. Raises if a deploy asks for auth and can't have it."""
     viewer_pw = os.environ.get("HOLLY_VIEWER_PASSWORD", "")
     admin_pw = os.environ.get("HOLLY_ADMIN_PASSWORD", "")
@@ -143,4 +268,4 @@ def install(app) -> None:
 
     limit = int(os.environ.get("HOLLY_CHAT_RATE_LIMIT", "20"))
     app.add_middleware(AccessMiddleware, viewer_pw=viewer_pw, admin_pw=admin_pw,
-                       chat_limit=limit)
+                       chat_limit=limit, ledger_factory=ledger_factory)

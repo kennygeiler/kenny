@@ -13,7 +13,7 @@ from core import auth  # noqa: E402
 
 def _app(monkeypatch, **env):
     for k in ("HOLLY_VIEWER_PASSWORD", "HOLLY_ADMIN_PASSWORD", "HOLLY_REQUIRE_AUTH",
-              "HOLLY_CHAT_RATE_LIMIT"):
+              "HOLLY_CHAT_RATE_LIMIT", "HOLLY_LEDGER_KEY", "FLY_APP_NAME"):
         monkeypatch.delenv(k, raising=False)
     for k, v in env.items():
         monkeypatch.setenv(k, v)
@@ -34,6 +34,10 @@ def _app(monkeypatch, **env):
     @app.get("/admin/ledger")
     def ledger():
         return {"events": []}
+
+    @app.post("/admin/upload")
+    def upload():
+        return {"ok": True}
 
     auth.install(app)
     return TestClient(app)
@@ -60,16 +64,68 @@ def test_identical_passwords_rejected(monkeypatch):
         _app(monkeypatch, HOLLY_VIEWER_PASSWORD="x", HOLLY_ADMIN_PASSWORD="x")
 
 
-def test_one_password_opens_everything_demo_posture(monkeypatch):
-    """Demo posture: EITHER credential opens the whole app, /admin included, so a shared
-    link lets a reviewer walk the full loop. Anonymous is still locked out. The per-path
-    viewer/admin split returns when the link stops being a demo."""
+def test_viewer_admin_split_is_enforced(monkeypatch):
+    """The split DEPLOY.md promises is enforced per-path (TICKETS.md C1): the viewer
+    credential opens chat; only the admin credential opens /admin/* — otherwise an
+    operator who shares the viewer password (as the docs tell them to) has silently
+    shared the ratify gate, the uploads, and the full ledger."""
     c = _app(monkeypatch, HOLLY_VIEWER_PASSWORD="look", HOLLY_ADMIN_PASSWORD="decide")
     assert c.get("/").status_code == 401                       # anonymous
     assert c.get("/", headers=_basic("look")).status_code == 200
-    assert c.get("/admin/ledger", headers=_basic("look")).status_code == 200
+    assert c.get("/admin/ledger", headers=_basic("look")).status_code == 403
+    assert c.post("/admin/upload", headers=_basic("look")).status_code == 403
     assert c.get("/admin/ledger", headers=_basic("decide")).status_code == 200
     assert c.get("/admin/ledger", headers=_basic("wrong")).status_code == 401
+
+
+def test_deploy_refuses_to_start_without_ledger_key(monkeypatch):
+    """Auth-required means tamper-evidence-required: without HOLLY_LEDGER_KEY the audit
+    chain is rewritable by anyone with volume access (TICKETS.md A2)."""
+    with pytest.raises(RuntimeError, match="HOLLY_LEDGER_KEY"):
+        _app(monkeypatch, HOLLY_REQUIRE_AUTH="1",
+             HOLLY_VIEWER_PASSWORD="look", HOLLY_ADMIN_PASSWORD="decide")
+
+
+def test_cross_origin_state_change_is_refused(monkeypatch):
+    """CSRF (TICKETS.md C2): a hostile page's form POST arrives with the browser's
+    cached credentials AND an Origin naming the hostile site. Same-origin requests and
+    non-browser clients (no Origin at all) pass."""
+    c = _app(monkeypatch, HOLLY_VIEWER_PASSWORD="look", HOLLY_ADMIN_PASSWORD="decide")
+    h = _basic("decide")
+    assert c.post("/admin/upload", headers={**h, "Origin": "https://evil.example"}
+                  ).status_code == 403
+    assert c.post("/admin/upload", headers={**h, "Origin": "null"}).status_code == 403
+    assert c.post("/admin/upload", headers={**h, "Origin": "http://testserver"}
+                  ).status_code == 200          # same origin
+    assert c.post("/admin/upload", headers=h).status_code == 200  # curl / tests
+    # GETs are never blocked on Origin (they don't change state).
+    assert c.get("/", headers={**_basic("look"), "Origin": "https://evil.example"}
+                 ).status_code == 200
+
+
+def test_failed_logins_are_throttled(monkeypatch):
+    """An unthrottled Basic-auth prompt is an online password oracle (TICKETS.md C3).
+    After the free misses, further attempts back off — and a good credential from the
+    same client works again once the lockout expires (we reset on success before the
+    lockout window here by staying under the doubling)."""
+    c = _app(monkeypatch, HOLLY_VIEWER_PASSWORD="look", HOLLY_ADMIN_PASSWORD="decide")
+    for _ in range(6):
+        assert c.get("/", headers=_basic("wrong")).status_code == 401
+    r = c.get("/", headers=_basic("wrong"))
+    assert r.status_code == 429
+    assert "Retry-After" in r.headers
+
+
+def test_fly_client_ip_used_only_on_fly(monkeypatch):
+    """Per-IP limits must key on the CLIENT, not the Fly proxy (TICKETS.md C4) — but a
+    spoofable header must not let a local client pick its own bucket."""
+    from types import SimpleNamespace
+    req_fly = SimpleNamespace(headers={"fly-client-ip": "203.0.113.9"},
+                              client=SimpleNamespace(host="172.16.0.1"))
+    monkeypatch.delenv("FLY_APP_NAME", raising=False)
+    assert auth._client_ip(req_fly) == "172.16.0.1"       # header ignored off-Fly
+    monkeypatch.setenv("FLY_APP_NAME", "holly-demo")
+    assert auth._client_ip(req_fly) == "203.0.113.9"      # trusted on Fly
 
 
 def test_healthz_is_open(monkeypatch):

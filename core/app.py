@@ -52,11 +52,16 @@ TEMPLATES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates"
 DEFAULT_YEAR = 2026  # assumed when a prompt gives a date without a year
 
 app = FastAPI(title="Holly")
-auth.install(app)  # no-op locally; required on any shared deploy (see core/auth.py)
+# No-op locally; required on any shared deploy (see core/auth.py). The factory lets the
+# middleware ledger auth events (failed logins, role denials, CSRF blocks) without a
+# circular import.
+auth.install(app, ledger_factory=lambda: _case().ledger())
 
 # In-process job registry for async ingestion (large PDFs). Single-worker; a
 # multi-worker deploy swaps this for a shared queue (PRD §8B).
 _JOBS: dict[str, dict] = {}
+
+_MAX_UPLOAD_BYTES = int(os.environ.get("HOLLY_MAX_UPLOAD_MB", "50")) << 20
 
 
 # --------------------------------------------------------------------------- #
@@ -424,10 +429,12 @@ _NOCACHE = {"Cache-Control": "no-store, max-age=0"}
 
 @app.get("/healthz")
 def healthz():
-    """Platform liveness probe. Reports the ledger chain so a corrupted audit trail
-    surfaces as an unhealthy instance rather than as a wrong answer months later."""
-    ok, msg = _case().ledger().verify()
-    return JSONResponse({"status": "ok" if ok else "degraded", "ledger": msg},
+    """Platform liveness probe. Verifies the ledger chain so a corrupted audit trail
+    surfaces as an unhealthy instance rather than as a wrong answer months later —
+    but this endpoint is UNAUTHENTICATED, so it reports only pass/fail; the tamper
+    detail ("event at seq N") is on /admin/ledger, behind the admin credential."""
+    ok, _msg = _case().ledger().verify()
+    return JSONResponse({"status": "ok" if ok else "degraded"},
                         status_code=200 if ok else 503)
 
 
@@ -869,7 +876,17 @@ def _ingest_worker(job_id: str):
 
 @app.post("/admin/ingest")
 def admin_ingest():
-    """Kick off async ingestion; returns a job id to poll. See /admin/ingest/status."""
+    """Kick off async ingestion; returns a job id to poll. See /admin/ingest/status.
+
+    Single-flight (TICKETS.md C5): each job is a thread plus docling doing minutes of
+    torch work — a second concurrent ingest doubles memory on a 2GB instance and the
+    two race on the same catalog/index files. Completed jobs are pruned so the
+    registry cannot grow without bound."""
+    if any(j.get("status") == "running" for j in _JOBS.values()):
+        return JSONResponse({"error": "an ingest is already running — poll its status "
+                             "or wait for it to finish"}, status_code=409)
+    while len(_JOBS) > 20:
+        _JOBS.pop(next(iter(_JOBS)))
     job_id = uuid.uuid4().hex[:12]
     _JOBS[job_id] = {"status": "running", "total": 0, "done": 0, "current": None,
                      "result": None, "error": None}
@@ -899,9 +916,30 @@ async def admin_upload(file: UploadFile = File(...)):
     fname = os.path.basename(file.filename or "upload.pdf")
     if not fname.lower().endswith(".pdf"):
         return JSONResponse({"error": "only .pdf files are accepted"}, status_code=400)
+    # Stream to a temp file with a hard size cap (TICKETS.md C5): reading the whole
+    # upload into RAM let any credential holder OOM the 2GB instance, and writing the
+    # destination directly could leave a half-written PDF over a good one.
     dest = os.path.join(src_dir, fname)
-    with open(dest, "wb") as f:
-        f.write(await file.read())
+    tmp = dest + ".uploading"
+    size = 0
+    try:
+        with open(tmp, "wb") as f:
+            while chunk := await file.read(1 << 20):
+                size += len(chunk)
+                if size > _MAX_UPLOAD_BYTES:
+                    return JSONResponse(
+                        {"error": f"file exceeds the "
+                                  f"{_MAX_UPLOAD_BYTES // (1 << 20)}MB upload limit"},
+                        status_code=413)
+                f.write(chunk)
+        with open(tmp, "rb") as f:
+            if f.read(5) != b"%PDF-":
+                return JSONResponse({"error": "not a PDF (bad magic bytes)"},
+                                    status_code=400)
+        os.replace(tmp, dest)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
     doc_id = _slug(os.path.splitext(fname)[0])
     title = os.path.splitext(fname)[0]

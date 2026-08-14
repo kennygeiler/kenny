@@ -38,7 +38,12 @@ fly deploy -a "$APP" --ha=false
 echo
 echo "============================================================"
 echo " Live:    https://$APP.fly.dev"
+# The two passwords are printed DELIBERATELY — this is how the operator learns them to
+# share/use; they land in terminal scrollback, so rotate after the demo (fly secrets
+# set). The API key and the ledger HMAC key are never printed.
 echo " Viewer:  $VIEWER"
 echo " Admin:   $ADMIN"
 echo "============================================================"
-echo " Share the URL + the VIEWER password. Keep ADMIN to yourself."
+echo " Share the URL + the VIEWER password (chat + documents only)."
+echo " Keep ADMIN to yourself — it alone opens /admin (ratify, upload, ledger)."
+echo " Rotate both after the demo: fly secrets set HOLLY_VIEWER_PASSWORD=..."
