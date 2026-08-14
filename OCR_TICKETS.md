@@ -5,9 +5,10 @@ produces clause-level provenance (1,861 clauses with `page`, `bbox`, `kind`, per
 `parse_source`, per-PDF `pdf_sha256`) — these tickets turn that data into surfaces a
 viewer can see and trust. Build in numbered order; each ticket is self-contained.
 
-> **STATUS (2026-08-14):** OCR-1 (X-ray, `eeb617d`), OCR-3 (scorecard, `8b23884`) and
-> OCR-4 (tier chips, `c71ccc6`) are DONE. Remaining, in order: OCR-2 (side-by-side),
-> OCR-5 (table X-ray), OCR-6 (live scan demo), OCR-7 (confidence capture).
+> **STATUS (2026-08-14):** OCR-1 (X-ray, `eeb617d`), OCR-3 (scorecard, `8b23884`),
+> OCR-4 (tier chips, `c71ccc6`) and OCR-2 (side-by-side, `8bea6f8`) are DONE.
+> Remaining, in order: OCR-5 (table X-ray), OCR-6 (live scan demo), OCR-7
+> (confidence capture).
 > Known data limitation: the shipped santacruz catalog predates per-row table bboxes
 > and sha recording — a re-ingest with docling refreshes both; the X-ray merges
 > shared-bbox rows into one box until then.
@@ -81,7 +82,7 @@ reading an answer.
 **Accept.** A policy answer over Santa Cruz shows "text layer" chips; a
 raw-text-ingested doc shows "page-level". Unit test: hit → chip-label mapping.
 
-## OCR-2 — Side-by-side fidelity view
+## OCR-2 — Side-by-side fidelity view — DONE (`8bea6f8`)
 **What.** Split view per page: rendered PDF left, extracted text right; hover either
 side highlights the counterpart. The human "verify the extraction" surface — OCR's
 analog of the rule-review gate.
