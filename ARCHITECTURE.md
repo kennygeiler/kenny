@@ -1,7 +1,7 @@
-# Holly — Technical Architecture
+# Kenny — Technical Architecture
 ### Engineering companion to the PRD
 
-> The PRD says what Holly is and why. This says how it is built: the structures, the contracts
+> The PRD says what Kenny is and why. This says how it is built: the structures, the contracts
 > between them, and the invariants a change must preserve. Where they overlap, the PRD owns intent
 > and this owns behaviour.
 >
@@ -48,7 +48,7 @@ property of the deterministic layer plus a human gate — not of the model.
 | `catalog.py` | per-document index: title, department, tags, summary, clauses | candidate identification |
 | `caseio.py` | case bundle loader; the rule vocabulary (`known_facts`, values, scenarios) | one source of truth for what a rule may reference |
 | `dataadapter.py` | `DataSource`: CSV today, DB/API behind the same interface | classification-table source is swappable |
-| `ledger.py` | hash-chained append-only event log + `verify()` | tamper-evident audit |
+| `ledger.py` | hash-chained append-only event log + `verify()`; events HMAC-signed under `KENNY_LEDGER_KEY` (kept off-volume) with the head hash anchored to platform logs | tamper-evident audit — rewrite needs the key, truncation fails the anchored head |
 | `audit.py` | per-query trail assembly; frozen answer snapshots | an answer stays reproducible after the contract renews |
 | `pdfview.py` | render a page and overlay the citation box | citations you can *see* |
 | `auth.py` | two-role auth, per-IP rate limit, refuse-to-start-misconfigured | a shared link must not hand out the approval gate |
@@ -353,10 +353,17 @@ reconstructed. It is the first migration when a jurisdiction outgrows a single m
 
 A local run and a shared link are different products. On any shared deploy:
 
-- **Two-role auth.** *Asking* and *deciding what the contract means* are different jobs; a viewer
-  credential reaches Chat, an admin credential the approval gate. The app **refuses to start**
-  misconfigured — a silent security failure becomes a loud startup failure.
-- **Per-IP rate limit** on the chat endpoint — one loop must not drain the model budget.
+- **Two-role auth, enforced per-path.** *Asking* and *deciding what the contract means* are
+  different jobs; the viewer credential reaches Chat and the documents it cites, and only the
+  admin credential reaches `/admin/*` (ratify, upload, ingest, ledger). The app **refuses to
+  start** misconfigured — including a missing ledger HMAC key — so a silent security failure
+  becomes a loud startup failure.
+- **Per-client rate limit** on the chat endpoint (real client IP via `Fly-Client-IP` on Fly) —
+  one loop must not drain the model budget — plus exponential backoff on failed logins and an
+  Origin check that refuses cross-site state-changing requests (CSRF).
+- **Source integrity.** Every ingested PDF's SHA-256 is recorded; serving, costing, and ratified
+  citations verify against it, and a re-ingest that moves or changes cited evidence marks the
+  dependent rules stale until a human re-verifies them.
 - **Path-safe document serving.** A `doc_id` from a URL is resolved through the manifest and confined
   to the case directory; it is never joined into a filesystem path.
 - **Sandboxed rule expressions.** Rules are authored by a model and never executed as code.

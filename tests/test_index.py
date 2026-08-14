@@ -58,6 +58,41 @@ def test_long_clause_is_windowed():
     assert all(c["clause"] == "X" and c["page"] == 1 for c in chunks)  # metadata preserved
 
 
+def test_tokenizer_keeps_section_numbers_whole():
+    """'§9.2' used to fragment into `9`,`2` — two high-df digit tokens — degrading
+    exactly the exact-token query BM25 exists for (TICKETS.md D1)."""
+    assert "9.2" in tokenize("see §9.2 for weekend shifts")
+    assert "9.2" in tokenize("Section 9.2 applies")
+    assert "53.00" in tokenize("Sergeant | $53.00")
+    # singular/plural fold together; stopwords drop
+    assert tokenize("the days of leave") == ["day", "leave"]
+    assert tokenize("rate") == tokenize("rates")
+
+
+def test_section_number_query_ranks_its_clause_first(tmp_path):
+    be = LocalBM25Backend(str(tmp_path / "idx.jsonl"))
+    be.index("poa", chunk_clauses(_clauses()))
+    hits = be.search("what does §12.2 say", doc_ids=["poa"], k=3)
+    assert hits and hits[0]["clause"] == "12.2"
+
+
+def test_query_cache_sees_writes_and_no_stale_tokens(tmp_path):
+    """Queries run from an in-memory cache (TICKETS.md D2); a subsequent index() must
+    invalidate it, and tokens are derived at load time — never trusted from disk — so
+    a tokenizer change can't silently mismatch a baked index."""
+    import json
+    be = LocalBM25Backend(str(tmp_path / "idx.jsonl"))
+    be.index("a", chunk_clauses(_clauses()))
+    assert be.search("graveyard differential", doc_ids=["a"], k=1)
+    be.index("b", [{"chunk_id": "0", "clause": "7.7", "page": 1, "bbox": [],
+                    "text": "canine handler stipend"}])
+    assert be.search("canine stipend", doc_ids=["b"], k=1)      # cache refreshed
+    with open(be.path) as f:
+        stored = [json.loads(l) for l in f if l.strip()]
+    assert all("_tokens" not in c for c in stored)              # tokens never persisted
+    assert not os.path.exists(be.path + ".tmp")                 # atomic write cleaned up
+
+
 def test_table_rows_become_searchable_lines():
     """Tables carry the money in an MOU (salary schedules, accrual charts). docling
     returns them as their own item type with no `.text`; a text-only reader drops them

@@ -23,14 +23,11 @@ CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 DOCS = {
     "prd": {"src": os.path.join(ROOT, "PRD.md"),
-            "title": "Holly — PRD",
-            "out": os.path.expanduser("~/Holly_PRD.pdf")},
+            "title": "Kenny — PRD",
+            "out": os.path.expanduser("~/Kenny_PRD.pdf")},
     "arch": {"src": os.path.join(ROOT, "ARCHITECTURE.md"),
-             "title": "Holly — Technical Architecture & Execution",
-             "out": os.path.expanduser("~/Holly_Architecture.pdf")},
-    "case": {"src": os.path.join(ROOT, "CASE_RESPONSE.md"),
-             "title": "Labor Costing Module — Case Response",
-             "out": os.path.expanduser("~/Holly_Case_Response.pdf")},
+             "title": "Kenny — Technical Architecture & Execution",
+             "out": os.path.expanduser("~/Kenny_Architecture.pdf")},
 }
 
 CSS = """
@@ -107,7 +104,7 @@ def build_one(key: str) -> None:
         sys.exit(f"missing source: {doc['src']}")
     md = open(doc["src"]).read()
     body = markdown.markdown(md, extensions=["tables", "fenced_code", "sane_lists"])
-    html_path = f"/tmp/holly_{key}.html"
+    html_path = f"/tmp/kenny_{key}.html"
     with open(html_path, "w") as f:
         f.write(f"<!doctype html><html><head><meta charset='utf-8'>"
                 f"<title>{doc['title']}</title><style>{CSS}</style></head>"

@@ -16,7 +16,6 @@ cases/*/sources/*.clauses.json
 
 # OS + junk
 .DS_Store
-0
 *.bak
 cases/*/rules/*.bak
 

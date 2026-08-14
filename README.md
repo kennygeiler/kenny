@@ -1,6 +1,6 @@
-# Holly — Document-Grounded Costing & Policy Engine
+# Kenny — Document-Grounded Costing & Policy Engine
 
-Holly answers HR costing and policy questions directly from contract PDFs — with
+Kenny answers HR costing and policy questions directly from contract PDFs — with
 **deterministic math**, **clause-level bounding-box citations**, a **human approval
 gate**, and a **tamper-evident audit ledger**. The LLM only reads language and routes
 questions; it never computes the number.
@@ -20,8 +20,6 @@ onboarding playbook. · [`DEPLOY.md`](DEPLOY.md) — putting it behind a shared 
 
 The PRD owns *intent*; ARCHITECTURE owns *behaviour*. Where they overlap, ARCHITECTURE is
 the tiebreak.
-
-Use santa cruz case for Holly Case. Other cases are tests.
 
 ---
 
@@ -56,9 +54,12 @@ restart. The chat badge then shows `LLM: Claude`. Without a key it still runs en
 deterministic fallbacks cover every LLM touchpoint. **Money math is deterministic either
 way.**
 
-**Offline / lightweight:** docling pulls torch + models on first parse. Ingestion falls
-back to the committed `sources/*.clauses.json` sidecars (exact bboxes), so you can skip
-installing docling and everything still works.
+**Offline / lightweight:** docling pulls torch + models on first parse — but the Santa
+Cruz case ships with its catalog and search index already baked, so the app answers
+without ever parsing. Skipping docling only matters if you RE-ingest: parsing then
+degrades to raw page text (page-level citations), unless a `sources/*.clauses.json`
+sidecar is present — an optional generated artifact that is only trusted when it embeds
+the SHA-256 of the exact PDF it was extracted from.
 
 ---
 

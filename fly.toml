@@ -1,4 +1,4 @@
-app = "holly-demo-kg-0717"
+app = "kenny-demo-kg-0717"
 primary_region = "sjc"
 
 [build]
@@ -6,14 +6,14 @@ primary_region = "sjc"
 [env]
   PORT = "8080"
   CASE_NAME = "santacruz"
-  HOLLY_REQUIRE_AUTH = "1"
-  HOLLY_CHAT_RATE_LIMIT = "20"
-  HOLLY_BANNER = "Prototype — demonstration only. Built on the Central Fire District of Santa Cruz County's published MOUs; every figure is analyst-derived and illustrative. Not a source of truth for any real pay decision."
+  KENNY_REQUIRE_AUTH = "1"
+  KENNY_CHAT_RATE_LIMIT = "20"
+  KENNY_BANNER = "Prototype — demonstration only. Built on the Central Fire District of Santa Cruz County's published MOUs; every figure is analyst-derived and illustrative. Not a source of truth for any real pay decision."
 
 # The ledger is the product's claim to defensibility; it cannot live on a filesystem
 # that a redeploy resets. Seeded from the image on first boot (scripts/entrypoint.sh).
 [mounts]
-  source = "holly_data"
+  source = "kenny_data"
   destination = "/data"
 
 [http_service]

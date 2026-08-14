@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Holly Admin — contract library, rule review and audit</title>
+  <title>Kenny Admin — contract library, rule review and audit</title>
   <link rel="stylesheet" href="/static/styles.css?v=4">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
 
   <header>
-    <h1>Holly <span class="hdr-sub">Admin</span></h1>
+    <h1>Kenny <span class="hdr-sub">Admin</span></h1>
     <p class="hdr-tag" id="caseName">Contract library, rule review and audit</p>
     <nav aria-label="Sections">
       <a href="/">Chat</a>
@@ -40,7 +40,7 @@
       <!-- ---------------- DOCUMENTS ---------------- -->
       <section role="tabpanel" id="panel-docs" aria-labelledby="tab-docs" class="panel" tabindex="0">
         <h2>Contract library</h2>
-        <p class="lede">Every document Holly can answer from. Reading a contract makes it
+        <p class="lede">Every document Kenny can answer from. Reading a contract makes it
           <strong>searchable</strong> (chat can quote it immediately); costing rules are drafted
           per paystub on the <strong>Verification</strong> tab, and a clause only counts as
           <strong>live</strong> once a person has approved the rule drawn from it.</p>
@@ -61,8 +61,8 @@
       <section role="tabpanel" id="panel-verify" aria-labelledby="tab-verify" class="panel" tabindex="0" hidden>
         <h2>Verification — start here</h2>
         <p class="lede">Each card is a <strong>known answer</strong> (a real paystub, or a figure an
-          analyst worked out by hand). To make Holly able to cost it, press <strong>Draft the rules for
-          this scenario</strong>: Holly pulls only the clauses that answer this paystub, drafts the
+          analyst worked out by hand). To make Kenny able to cost it, press <strong>Draft the rules for
+          this scenario</strong>: Kenny pulls only the clauses that answer this paystub, drafts the
           handful of rules they need, and checks the total. Approve alone is never enough — a rule set
           that cannot reproduce these known answers cannot go live.</p>
         <div id="verify"></div>
@@ -71,7 +71,7 @@
       <!-- ---------------- REVIEW QUEUE ---------------- -->
       <section role="tabpanel" id="panel-review" aria-labelledby="tab-review" class="panel" tabindex="0" hidden>
         <h2>Review queue</h2>
-        <p class="lede">Rules Holly drafted <strong>for a specific known paystub</strong> (from the
+        <p class="lede">Rules Kenny drafted <strong>for a specific known paystub</strong> (from the
           <strong>Verification</strong> tab), waiting for your approval. None affect an answer yet. Only
           the handful a real scenario needs — not the whole contract — so each is quick to check against
           its clause (<strong>View source</strong> highlights it on the page). Approve the ones that match.</p>
@@ -87,9 +87,9 @@
       <!-- ---------------- RULE LIBRARY (the contract dictionary) ---------------- -->
       <section role="tabpanel" id="panel-lib" aria-labelledby="tab-lib" class="panel" tabindex="0" hidden>
         <h2>Rule library</h2>
-        <p class="lede">The contract, as Holly executes it — in three honest parts:
+        <p class="lede">The contract, as Kenny executes it — in three honest parts:
           what <strong>computes</strong> (approved rules, each naming its clause and approver),
-          what Holly <strong>declined to model</strong> (clauses that pay on a dimension your
+          what Kenny <strong>declined to model</strong> (clauses that pay on a dimension your
           classification table doesn't have — with the dimension that would unlock them), and
           everything else, which is answered by <strong>quoting</strong> the contract, never
           computing. This is the page to hand an auditor.</p>
@@ -366,7 +366,7 @@
       const v = await fetch('/admin/verification').then(r => r.json());
       $('cnt-verify').textContent = (v.goldens || []).length;
       // Three states, not two. "Pending" means no live rule covers the scenario yet, so
-      // Holly refuses to cost it — unproven, but not wrong, and not a blocker.
+      // Kenny refuses to cost it — unproven, but not wrong, and not a blocker.
       const CARD = {pass: 'ratified', fail: 'invalid', pending: 'warn-card'};
       const WORD = {pass: 'Reproduced', fail: 'Did not reproduce', pending: 'Not covered yet'};
       const TONE = {pass: 'ok', fail: 'bad', pending: 'warn-text'};
@@ -377,7 +377,7 @@
             <span class="badge-type">${esc(g.result_type)}</span>
             <span class="${TONE[g.status] || 'bad'}">${WORD[g.status] || 'Did not reproduce'}</span>
           </div>
-          <p class="muted">Known answer <strong>${esc(g.expected)}</strong> · Holly computes
+          <p class="muted">Known answer <strong>${esc(g.expected)}</strong> · Kenny computes
             <strong>${esc(g.actual ?? '—')}</strong>${
               g.status !== 'pending' && g.error ? ' · ' + esc(g.error) : ''}</p>
           ${g.source ? `<p class="muted">Ground truth: ${esc(g.source)}</p>` : ''}
@@ -424,7 +424,7 @@
     }
 
     /* ---------------- data gaps ---------------- */
-    // Part two of the Rule library: clauses Holly DECLINED to model. Not a failure — the
+    // Part two of the Rule library: clauses Kenny DECLINED to model. Not a failure — the
     // contract pays on a dimension the classification table doesn't have (an `event` like
     // court time or a holdover; an `assignment` like Detective Bureau). Refusing beats
     // silently paying every classification; the card names the dimension that unlocks it.
@@ -465,7 +465,7 @@
       const res = await pollJob(start.job_id);
       if (!res) return;
       // Say which declared documents have no file. Silently cataloguing them as empty
-      // made the library list contracts Holly could not answer from, with no reason given.
+      // made the library list contracts Kenny could not answer from, with no reason given.
       const miss = res.missing || [];
       let msg = `Read ${res.ingested.length} document(s). Ask about them in chat right away; ` +
                 `costing rules are drafted per scenario on the Verification tab.`;

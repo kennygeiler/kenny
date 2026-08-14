@@ -43,6 +43,10 @@ class Citation:
     page: int = 0
     bbox: list[float] = field(default_factory=list)  # [x0, y0, x1, y1] in PDF points
     char_span: list[int] = field(default_factory=list)
+    # SHA-256 of the source PDF at draft time. Binds the citation to the exact file the
+    # human reviewed: if the document is later replaced, the mismatch is detectable
+    # instead of the highlight silently rendering over different text.
+    doc_sha256: str = ""
 
     @classmethod
     def from_dict(cls, d: dict | None) -> "Citation":
@@ -53,6 +57,7 @@ class Citation:
             page=int(d.get("page", 0)),
             bbox=list(d.get("bbox", []) or []),
             char_span=list(d.get("char_span", []) or []),
+            doc_sha256=d.get("doc_sha256", ""),
         )
 
     def to_dict(self) -> dict:
@@ -62,6 +67,7 @@ class Citation:
             "page": self.page,
             "bbox": self.bbox,
             "char_span": self.char_span,
+            "doc_sha256": self.doc_sha256,
         }
 
 

@@ -2,5 +2,5 @@
 .venv
 snapshots/
 *.bak
-holly_backup_*/
+kenny_backup_*/
 __pycache__/

@@ -24,17 +24,26 @@ class Routing:
 
 class Retriever(ABC):
     @abstractmethod
-    def route(self, query: str, catalog) -> Routing:
+    def route(self, query: str, catalog, backend=None) -> Routing:
         raise NotImplementedError
 
 
 class CatalogLLMRetriever(Retriever):
+    # The LLM ranking prompt carries every candidate's summary, so it must be BOUNDED
+    # (TICKETS.md D4): shipping the whole catalog grows the prompt O(corpus). Above
+    # this many documents, a cheap lexical pre-rank shortlists first.
+    MAX_LLM_CATALOG = 12
+
     def __init__(self, confidence_threshold: float = 0.35, margin: float = 0.15):
         self.threshold = confidence_threshold
         self.margin = margin
 
     def route(self, query: str, catalog, backend=None) -> Routing:
         summaries = catalog.summaries()
+        if len(summaries) > self.MAX_LLM_CATALOG:
+            pre = llm._rank_documents_stub(query, summaries)
+            keep = {c["doc_id"] for c in pre[:self.MAX_LLM_CATALOG]}
+            summaries = [s for s in summaries if s["doc_id"] in keep]
         candidates = llm.rank_documents(query, summaries)
         if not candidates:
             return Routing(None, [], True, reason="no documents in catalog")

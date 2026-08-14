@@ -51,12 +51,17 @@ CASE_DIR = default_case_dir()
 TEMPLATES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 DEFAULT_YEAR = 2026  # assumed when a prompt gives a date without a year
 
-app = FastAPI(title="Holly")
-auth.install(app)  # no-op locally; required on any shared deploy (see core/auth.py)
+app = FastAPI(title="Kenny")
+# No-op locally; required on any shared deploy (see core/auth.py). The factory lets the
+# middleware ledger auth events (failed logins, role denials, CSRF blocks) without a
+# circular import.
+auth.install(app, ledger_factory=lambda: _case().ledger())
 
 # In-process job registry for async ingestion (large PDFs). Single-worker; a
 # multi-worker deploy swaps this for a shared queue (PRD §8B).
 _JOBS: dict[str, dict] = {}
+
+_MAX_UPLOAD_BYTES = int(os.environ.get("KENNY_MAX_UPLOAD_MB", "50")) << 20
 
 
 # --------------------------------------------------------------------------- #
@@ -90,6 +95,65 @@ def _extraction(case) -> dict:
     return {}
 
 
+# SHA-256 of source PDFs, cached by (mtime, size) so serving doesn't re-hash a multi-MB
+# file per request. An attacker who can also forge mtime+size defeats the cache until
+# restart — the cache is a hot-path economy, not the security boundary; ingest and the
+# stale-rule gate re-hash for real.
+_HASH_CACHE: dict[str, tuple[float, int, str]] = {}
+
+
+def _file_sha256(path: str) -> str:
+    try:
+        st = os.stat(path)
+    except OSError:
+        return ""
+    cached = _HASH_CACHE.get(path)
+    if cached and cached[0] == st.st_mtime and cached[1] == st.st_size:
+        return cached[2]
+    sha = ingest.sha256_file(path)
+    _HASH_CACHE[path] = (st.st_mtime, st.st_size, sha)
+    return sha
+
+
+def _check_source_hash(cat, doc_id: str, pdf_path: str) -> tuple[bool, str, str]:
+    """Does the file on disk still match the bytes that were ingested? (TICKETS.md A1)
+    Returns (ok, expected, actual). A catalog entry with no recorded hash (pre-hashing
+    ingest) passes — there is nothing to verify against until the next re-ingest."""
+    entry = cat.get(doc_id) or {}
+    expected = entry.get("pdf_sha256", "")
+    if not expected:
+        return True, "", ""
+    actual = _file_sha256(pdf_path)
+    return actual == expected, expected, actual
+
+
+def _doc_integrity(case, cat, doc_ids: list[str], rules) -> list[str]:
+    """Every provenance failure that must BLOCK a costing answer:
+    a source PDF on disk that no longer matches its ingested hash, or a ratified rule
+    whose citation was bound (at draft time) to different bytes than the catalog now
+    holds. Returns human-readable problems; empty means the chain is intact."""
+    problems: list[str] = []
+    for d in doc_ids:
+        entry = cat.get(d)
+        if not entry:
+            continue
+        pdf_path = _resolve_pdf(case, d)
+        if pdf_path:
+            ok, expected, actual = _check_source_hash(cat, d, pdf_path)
+            if not ok:
+                problems.append(f"{d}: file on disk (sha {actual[:12]}) no longer "
+                                f"matches the ingested document (sha {expected[:12]})")
+    for r in rules:
+        cit = r.citation
+        entry = cat.get(cit.doc_id) or {}
+        now = entry.get("pdf_sha256", "")
+        if cit.doc_sha256 and now and cit.doc_sha256 != now:
+            problems.append(f"rule {r.id}: ratified against {cit.doc_id} sha "
+                            f"{cit.doc_sha256[:12]}, but the ingested document is now "
+                            f"sha {now[:12]}")
+    return problems
+
+
 def _enrich_citations(cat, result_dict: dict) -> dict:
     """Fill in each citation's page + bbox from the ingested document (docling) when
     the rule left them blank — so highlights land on the real section even for large
@@ -109,6 +173,56 @@ def _enrich_citations(cat, result_dict: dict) -> dict:
     return result_dict
 
 
+def _revalidate_citations(case, cat, doc_ids: list[str], led) -> list[dict]:
+    """Re-check every ratified rule citing the (re-)ingested documents (TICKETS.md A3).
+
+    A rule freezes its citation (clause, page, bbox, source sha) at draft time. After a
+    re-ingest the evidence may have moved — a revised MOU renumbers a section, replaces
+    a page, or is simply a different file. Such a rule is marked `stale` (with the
+    reason), which excludes it from the engine via load_rules' ratified-only filter,
+    and the change is ledgered. Silently keeping the old coordinates would highlight
+    the wrong text under a confident citation — the exact failure this product exists
+    to prevent. Rules whose evidence still checks out get their citation's source hash
+    backfilled, so pre-hashing approvals become bound going forward."""
+    library = _raw_ratified(case)
+    stale, backfilled = [], 0
+    for r in library:
+        if r.get("status") != "ratified":
+            continue
+        cit = r.get("citation") or {}
+        d = cit.get("doc_id")
+        if d not in doc_ids:
+            continue
+        entry = cat.get(d) or {}
+        problems = []
+        sha_then, sha_now = cit.get("doc_sha256", ""), entry.get("pdf_sha256", "")
+        if sha_then and sha_now and sha_then != sha_now:
+            problems.append("the source PDF changed since ratification")
+        clause = str(cit.get("clause") or "")
+        if clause:
+            matches = [c for c in entry.get("clauses", [])
+                       if str(c.get("clause")) == clause]
+            if not matches:
+                problems.append(f"cited clause {clause} no longer exists in {d}")
+            elif cit.get("page") and not any(c.get("page") == cit.get("page")
+                                             for c in matches):
+                problems.append(f"cited clause {clause} is no longer on page "
+                                f"{cit.get('page')}")
+        if problems:
+            r["status"] = "stale"
+            r["stale_reason"] = "; ".join(problems)
+            stale.append({"rule_id": r.get("id"), "reason": r["stale_reason"]})
+        elif not sha_then and sha_now:
+            cit["doc_sha256"] = sha_now
+            r["citation"] = cit
+            backfilled += 1
+    if stale or backfilled:
+        _write_ratified(case, library)
+    for s in stale:
+        led.append("authoring.stale", s, actor="system")
+    return stale
+
+
 def _doc_meta(case, doc_id: str) -> dict:
     s = case.source_by_id(doc_id) or {}
     return {"doc_id": doc_id, "title": s.get("title", doc_id),
@@ -119,6 +233,29 @@ def _is_rate_row(hit: dict) -> bool:
     """A retrieved chunk that is a row of a rate table rather than prose about pay."""
     text = hit.get("text") or ""
     return "|" in text and "$" in text
+
+
+def _dept_scope(case, cat, dept) -> list[str]:
+    """Candidate documents for a department, restricted to what is actually INGESTED.
+
+    The ONE scoping helper for every retrieval path (TICKETS.md B1). It encodes two
+    hard-won rules together so no path can drift with only one of them again:
+      1. case.yaml declares the intended corpus; the catalog holds what really parsed.
+         A document with no clauses in the index is a plan, not a candidate.
+      2. Callers must treat an EMPTY scope as "nothing to search" — never pass [] to
+         backend.search, which reads it as "no filter" and would leak every other
+         department's contracts into the answer.
+    """
+    ingested = {d["doc_id"] for d in cat.documents()}
+    return [d for d in case.docs_for_department(dept) if d in ingested]
+
+
+_ASKS_EVERYONE_RE = re.compile(r"\b(all|every|each|entire|whole|everyone|roster)\b", re.I)
+
+
+def _clarify(qid: str, prompt: str, question: str, options: list | None = None) -> dict:
+    return {"query_id": qid, "mode": "clarify", "prompt_echo": prompt,
+            "question": question, "options": options or []}
 
 
 def _policy_answer(case, led, qid: str, prompt: str, department: str | None = None,
@@ -134,7 +271,7 @@ def _policy_answer(case, led, qid: str, prompt: str, department: str | None = No
     `lookup=True` serves a figure the documents already PUBLISH — a Step C rate off a
     salary schedule. It is the same retrieve-and-quote spine, and deliberately so: a
     published rate needs no rule, no golden and no engine, because there is no arithmetic
-    to get wrong. Routing it through costing made Holly refuse a number it was holding.
+    to get wrong. Routing it through costing made Kenny refuse a number it was holding.
     """
     cat = _catalog(case)
     backend = _backend(case)
@@ -146,15 +283,11 @@ def _policy_answer(case, led, qid: str, prompt: str, department: str | None = No
                                      "known_departments": departments},
                actor="chat", query_id=qid)
 
-    # 2. Candidate shortlist from metadata — but only documents that have actually been
-    #    INGESTED. docs_for_department reads case.yaml, which declares the whole intended
-    #    corpus (13); the catalog holds what has really been parsed. Shortlisting the
-    #    declared set made a corpus with one uploaded document report "searched 13 of 13,
-    #    12 not used" — naming 12 contracts that do not exist yet as "considered". A
-    #    document with no clauses in the index cannot answer anything; it is not a
-    #    candidate, it is a plan.
+    # 2. Candidate shortlist from metadata — via the one shared scoping helper (see
+    #    _dept_scope for why declared-vs-ingested and the empty-scope guard must always
+    #    travel together).
     ingested = {d["doc_id"] for d in cat.documents()}
-    scope = [d for d in case.docs_for_department(dept) if d in ingested]
+    scope = _dept_scope(case, cat, dept)
     led.append("retrieval.candidates",
                {"department": dept, "candidate_docs": scope, "corpus_size": len(ingested),
                 "declared": len(case.manifest.get("sources", []))},
@@ -235,8 +368,12 @@ def _entitlement_answer(case, led, qid: str, prompt: str,
     backend = _backend(case)
     departments = case.departments()
     dept = department or llm.extract_department(prompt, departments)
-    scope = case.docs_for_department(dept)
-    hits = backend.search(prompt, doc_ids=scope, k=6)
+    # Same scoping discipline as _policy_answer (TICKETS.md B1). This path used to scope
+    # by the DECLARED corpus and pass an empty list straight to search — which the
+    # backend reads as "no filter" — so a department with no ingested documents was
+    # answered from every OTHER department's contracts.
+    scope = _dept_scope(case, _catalog(case), dept)
+    hits = backend.search(prompt, doc_ids=scope, k=6) if scope else []
     led.append("entitlement.retrieval",
                {"department": dept, "candidates": len(scope),
                 "hits": [{k: h[k] for k in ("doc_id", "clause", "score")} for h in hits]},
@@ -249,6 +386,10 @@ def _entitlement_answer(case, led, qid: str, prompt: str,
              and (r.citation.doc_id, str(r.citation.clause)) in hit_keys]
     subjects_all = case.subjects()
     params = llm.parse_intent(prompt, _extraction(case), subjects_all)
+    if params.get("unverified_numbers"):
+        return _clarify(qid, prompt,
+                        "I read a number out of that question that it doesn't actually "
+                        "state — can you restate it with the amount spelled out?")
     named = set(params.get("subjects") or [])
     subjects = [s for s in subjects_all if s.get("name") in named]
 
@@ -288,10 +429,12 @@ _NOCACHE = {"Cache-Control": "no-store, max-age=0"}
 
 @app.get("/healthz")
 def healthz():
-    """Platform liveness probe. Reports the ledger chain so a corrupted audit trail
-    surfaces as an unhealthy instance rather than as a wrong answer months later."""
-    ok, msg = _case().ledger().verify()
-    return JSONResponse({"status": "ok" if ok else "degraded", "ledger": msg},
+    """Platform liveness probe. Verifies the ledger chain so a corrupted audit trail
+    surfaces as an unhealthy instance rather than as a wrong answer months later —
+    but this endpoint is UNAUTHENTICATED, so it reports only pass/fail; the tamper
+    detail ("event at seq N") is on /admin/ledger, behind the admin credential."""
+    ok, _msg = _case().ledger().verify()
+    return JSONResponse({"status": "ok" if ok else "degraded"},
                         status_code=200 if ok else 503)
 
 
@@ -325,7 +468,7 @@ def api_case():
             # Set on the shared deploy. A hosted link gets mistaken for a product; this
             # is a prototype on a synthetic corpus and every viewer must be told so
             # before they read a dollar figure off it.
-            "banner": os.environ.get("HOLLY_BANNER", "")}
+            "banner": os.environ.get("KENNY_BANNER", "")}
 
 
 # --------------------------------------------------------------------------- #
@@ -378,10 +521,34 @@ async def _chat(body: dict, qid: str):
     params = llm.parse_intent(prompt, _extraction(case), subjects_all)
     led.append("llm.parse_intent", params, actor="chat", query_id=qid)
 
-    # 2. Select the subjects named in the prompt (all if none matched), and derive
-    #    their bargaining unit(s) + the shift date — the governance keys.
+    # A model-extracted number the question doesn't contain never reaches the engine
+    # (TICKETS.md B3) — ask, don't multiply by it.
+    unverified = params.get("unverified_numbers")
+    if unverified:
+        led.append("costing.clarify",
+                   {"reason": "model-extracted number absent from the question",
+                    "unverified": unverified}, actor="chat", query_id=qid)
+        return _clarify(qid, prompt,
+                        f"I read {unverified.get('hours')} hours out of that, but the "
+                        "question doesn't state that number. How long is the shift?")
+
+    # 2. Select the subjects named in the prompt, and derive their bargaining unit(s)
+    #    + the shift date — the governance keys. A question that names NOBODY is asked
+    #    who it is for (TICKETS.md B4) — silently costing the entire roster turned a
+    #    vague question into one large confident total.
     named = set(params.get("subjects") or [])
-    subjects = [s for s in subjects_all if s.get("name") in named] or subjects_all
+    subjects = [s for s in subjects_all if s.get("name") in named]
+    if not subjects:
+        if _ASKS_EVERYONE_RE.search(prompt):
+            subjects = subjects_all
+        else:
+            led.append("costing.clarify", {"reason": "no subject named"},
+                       actor="chat", query_id=qid)
+            examples = ", ".join(str(s.get("name")) for s in subjects_all[:3])
+            return _clarify(qid, prompt,
+                            "Who is this for? Name a classification (e.g. "
+                            f"{examples}) — or say 'all classifications' to cost the "
+                            "whole roster.")
     units = sorted({s.get("bargaining_unit") for s in subjects if s.get("bargaining_unit")})
     date_iso = governance.parse_date(params.get("date"), default_year=DEFAULT_YEAR)
     led.append("data.read",
@@ -451,16 +618,40 @@ async def _chat(body: dict, qid: str):
         led.append("governance.supersession", {"dropped": dropped},
                    actor="engine", query_id=qid)
     if not rules:
-        # No human-ratified rules for this document yet — never guess a number.
+        # No human-ratified rules for this document yet — never guess a number. If rules
+        # exist but were marked STALE (their cited evidence changed on re-ingest), say
+        # that: the fix is re-verification, not authoring from scratch.
+        stale = [r.get("id") for r in _raw_ratified(case)
+                 if r.get("status") == "stale"
+                 and (r.get("citation") or {}).get("doc_id") in chosen_docs]
         led.append("costing.blocked",
-                   {"reason": "no ratified rules", "doc": chosen_docs},
+                   {"reason": "rules pending re-verification" if stale
+                    else "no ratified rules", "doc": chosen_docs, "stale": stale},
                    actor="engine", query_id=qid)
+        if stale:
+            return {"query_id": qid, "needs_confirmation": False, "mode": "blocked",
+                    "chosen_doc": chosen, "message":
+                        f"I can't cost this right now: the rules for **{chosen}** are "
+                        f"pending re-verification ({len(stale)} rule(s) were marked "
+                        "stale because their source document changed since they were "
+                        "ratified). Re-verify them in Admin → Rule review before "
+                        "costing resumes."}
         return {"query_id": qid, "needs_confirmation": False, "mode": "blocked",
                 "chosen_doc": chosen, "message":
                     f"I can't cost this yet: **{chosen}** has no human-ratified rules. "
                     "Policy questions still work (I can quote the document). To enable "
                     "costing, go to Admin → Ingest, review the drafted rules, and "
                     "approve them — nothing computes until a human ratifies it."}
+    problems = _doc_integrity(case, cat, chosen_docs, rules)
+    if problems:
+        led.append("costing.blocked", {"reason": "provenance mismatch",
+                                       "problems": problems},
+                   actor="engine", query_id=qid)
+        return {"query_id": qid, "needs_confirmation": False, "mode": "blocked",
+                "chosen_doc": chosen, "message":
+                    "I can't cost this: the source documents no longer match what the "
+                    "rules were ratified against. Re-ingest and re-verify before "
+                    "answering. Details: " + "; ".join(problems)}
     eng_params = {"hours": params.get("hours", 0.0),
                   "date": params.get("date", ""),
                   "date_iso": date_iso or "",
@@ -557,6 +748,14 @@ def doc_file(doc_id: str):
     pdf_path = _resolve_pdf(case, doc_id)
     if not pdf_path:
         return JSONResponse({"error": "unknown or unavailable document"}, status_code=404)
+    ok, expected, actual = _check_source_hash(_catalog(case), doc_id, pdf_path)
+    if not ok:
+        case.ledger().append("provenance.mismatch",
+                             {"doc_id": doc_id, "expected": expected, "actual": actual,
+                              "route": "doc_file"}, actor="system")
+        return JSONResponse({"error": "source document changed since ingestion — "
+                             "re-ingest and re-verify before it can be served"},
+                            status_code=409)
     return FileResponse(pdf_path, media_type="application/pdf",
                         headers={"Content-Disposition":
                                  f'inline; filename="{os.path.basename(pdf_path)}"'})
@@ -568,7 +767,19 @@ def doc_page(doc_id: str, page: int, bbox: str = ""):
     pdf_path = _resolve_pdf(case, doc_id)
     if not pdf_path:
         return JSONResponse({"error": "unknown doc"}, status_code=404)
-    box = [float(x) for x in bbox.split(",")] if bbox else []
+    ok, expected, actual = _check_source_hash(_catalog(case), doc_id, pdf_path)
+    if not ok:
+        case.ledger().append("provenance.mismatch",
+                             {"doc_id": doc_id, "expected": expected, "actual": actual,
+                              "route": "doc_page"}, actor="system")
+        return JSONResponse({"error": "source document changed since ingestion — "
+                             "the citation cannot be rendered against it"},
+                            status_code=409)
+    try:
+        box = [float(x) for x in bbox.split(",")] if bbox else []
+    except ValueError:
+        return JSONResponse({"error": "bbox must be comma-separated numbers"},
+                            status_code=400)
     png = render_page_with_bbox(pdf_path, page, box)
     if png is None:
         return JSONResponse({"error": "render unavailable"}, status_code=503)
@@ -609,8 +820,12 @@ def _ingest_worker(job_id: str):
                                            tax, cat, backend=backend)
             led.append("authoring.ingest",
                        {"doc_id": src["id"], "parse_source": entry["parse_source"],
+                        "pdf_sha256": entry.get("pdf_sha256", ""),
                         "tags": entry["tags"], "clauses": len(entry["clauses"])},
                        actor="admin")
+            # A re-ingest may have moved or replaced the evidence ratified rules cite —
+            # re-check them now, not at answer time (TICKETS.md A3).
+            _revalidate_citations(case, cat, [src["id"]], led)
             # Ingest EXTRACTS and INDEXES; it does NOT draft rules. Drafting the whole MOU
             # up front produced 33 rules per contract to review and an approve-all that
             # could never match one grand total. Rules are now drafted PER SCENARIO, scoped
@@ -623,6 +838,9 @@ def _ingest_worker(job_id: str):
                              # surface it rather than listing it as ingested
                              "warning": ("NO CONTENT EXTRACTED — this document is not "
                                          "searchable" if not entry["clauses"] else
+                                         f"indexing failed ({entry['index_error']}) — "
+                                         "catalogued but absent from search"
+                                         if entry.get("index_error") else
                                          "degraded extraction (page-level citations only)"
                                          if entry["parse_source"] == "raw-text-fallback"
                                          else None)})
@@ -631,6 +849,23 @@ def _ingest_worker(job_id: str):
         if missing:
             led.append("authoring.ingest_missing",
                        {"doc_ids": [m["doc_id"] for m in missing]}, actor="admin")
+        # RECONCILE (TICKETS.md F4): a document deleted from case.yaml must leave the
+        # catalog and the search index too, or the library forever lists (and search
+        # forever answers from) a contract the case no longer declares. Uploaded
+        # documents are catalog-only by design and are left alone.
+        declared = {s["id"] for s in sources}
+        for entry in list(cat.documents()):
+            did = entry["doc_id"]
+            if did in declared or entry.get("uploaded"):
+                continue
+            cat.remove(did)
+            try:
+                backend.delete(did)
+            except Exception:
+                pass
+            led.append("authoring.reconciled",
+                       {"doc_id": did, "reason": "no longer declared in case.yaml"},
+                       actor="admin")
         job["done"] = job["total"]
         job["result"] = {"ingested": ingested, "proposed_rules": [], "missing": missing}
         job["status"] = "done"
@@ -641,7 +876,17 @@ def _ingest_worker(job_id: str):
 
 @app.post("/admin/ingest")
 def admin_ingest():
-    """Kick off async ingestion; returns a job id to poll. See /admin/ingest/status."""
+    """Kick off async ingestion; returns a job id to poll. See /admin/ingest/status.
+
+    Single-flight (TICKETS.md C5): each job is a thread plus docling doing minutes of
+    torch work — a second concurrent ingest doubles memory on a 2GB instance and the
+    two race on the same catalog/index files. Completed jobs are pruned so the
+    registry cannot grow without bound."""
+    if any(j.get("status") == "running" for j in _JOBS.values()):
+        return JSONResponse({"error": "an ingest is already running — poll its status "
+                             "or wait for it to finish"}, status_code=409)
+    while len(_JOBS) > 20:
+        _JOBS.pop(next(iter(_JOBS)))
     job_id = uuid.uuid4().hex[:12]
     _JOBS[job_id] = {"status": "running", "total": 0, "done": 0, "current": None,
                      "result": None, "error": None}
@@ -671,16 +916,45 @@ async def admin_upload(file: UploadFile = File(...)):
     fname = os.path.basename(file.filename or "upload.pdf")
     if not fname.lower().endswith(".pdf"):
         return JSONResponse({"error": "only .pdf files are accepted"}, status_code=400)
+    # Stream to a temp file with a hard size cap (TICKETS.md C5): reading the whole
+    # upload into RAM let any credential holder OOM the 2GB instance, and writing the
+    # destination directly could leave a half-written PDF over a good one.
     dest = os.path.join(src_dir, fname)
-    with open(dest, "wb") as f:
-        f.write(await file.read())
+    tmp = dest + ".uploading"
+    size = 0
+    try:
+        with open(tmp, "wb") as f:
+            while chunk := await file.read(1 << 20):
+                size += len(chunk)
+                if size > _MAX_UPLOAD_BYTES:
+                    return JSONResponse(
+                        {"error": f"file exceeds the "
+                                  f"{_MAX_UPLOAD_BYTES // (1 << 20)}MB upload limit"},
+                        status_code=413)
+                f.write(chunk)
+        with open(tmp, "rb") as f:
+            if f.read(5) != b"%PDF-":
+                return JSONResponse({"error": "not a PDF (bad magic bytes)"},
+                                    status_code=400)
+        os.replace(tmp, dest)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
     doc_id = _slug(os.path.splitext(fname)[0])
     title = os.path.splitext(fname)[0]
     entry = ingest.ingest_document(dest, doc_id, title, tax, cat, backend=_backend(case))
+    # Uploaded docs are catalog-only (not declared in case.yaml); the marker keeps the
+    # post-ingest reconciliation pass from garbage-collecting them.
+    entry["uploaded"] = True
+    cat.upsert(entry)
     led.append("authoring.upload",
                {"doc_id": doc_id, "filename": fname, "parse_source": entry["parse_source"],
+                "pdf_sha256": entry.get("pdf_sha256", ""),
                 "tags": entry["tags"], "clauses": len(entry["clauses"])}, actor="admin")
+    # An upload can replace an existing source file by name — same drift risk as a bulk
+    # re-ingest, so ratified rules citing this document are re-checked immediately.
+    _revalidate_citations(case, cat, [doc_id], led)
 
     # Upload = extract + index, same as bulk ingest. It does NOT draft rules — this was
     # the last surviving bulk-draft path after the scenario-scoped pivot, and it put a
@@ -734,6 +1008,9 @@ def admin_proposed():
                 for r in case.rules()}
     data["ratified_ids"] = sorted(ratified.keys())
     data["ratified_meta"] = ratified
+    # Rules whose cited evidence changed on a re-ingest (marked by _revalidate_citations)
+    # — excluded from the engine until a human re-verifies and re-approves them.
+    data["stale_rules"] = [r for r in _raw_ratified(case) if r.get("status") == "stale"]
     # The FULL ratified library, verbatim from disk. The rule-library UI must render from
     # this — not from the proposed queue filtered to ratified ids. The queue is ephemeral
     # (cleared on reseed, not shipped in the image), so deriving the library display from
@@ -851,7 +1128,7 @@ def _check_golden(case, rule_dicts: list[dict], golden: dict) -> tuple[bool, dic
         return True, {"scenario": golden.get("name", "golden"), "status": "pending",
                       "expected": golden.get("expected_total"), "actual": None,
                       "error": str(e),
-                      "note": "No live rule covers this scenario yet, so Holly refuses "
+                      "note": "No live rule covers this scenario yet, so Kenny refuses "
                               "to cost it rather than guessing. Approve the rules for "
                               "this unit and this check will run."}
     except Exception as e:
@@ -862,7 +1139,7 @@ def _check_golden(case, rule_dicts: list[dict], golden: dict) -> tuple[bool, dic
 
 @app.get("/admin/coverage")
 def admin_coverage():
-    """How much of each contract has Holly actually modelled?
+    """How much of each contract has Kenny actually modelled?
 
     The question an HR Director asks, which a "64 rules drafted" counter cannot answer.
     Per document: clauses extracted, rules live, rules pending review, clauses blocked
@@ -987,7 +1264,7 @@ async def admin_draft_scenario(request: Request):
 
     This is the rebuilt authoring model. Instead of drafting a whole 140-clause MOU into
     33 rules and hoping approve-all matches one grand total, a scenario names a real
-    known answer; Holly retrieves the handful of clauses that answer it, drafts just
+    known answer; Kenny retrieves the handful of clauses that answer it, drafts just
     those, and checks them against the paystub. Review collapses from ~33 rules to ~5,
     and a small focused drafting task is one the model gets right (roles, pay_basis,
     compounding differentials) where the whole-MOU task was fragile.
@@ -1038,10 +1315,17 @@ async def admin_draft_scenario(request: Request):
         for d, clauses in clauses_by_doc.items():
             rules = llm.draft_rules(clauses, d, case.known_facts(),
                                     case.field_values(), case.bool_facts())
+            doc_sha = (cat.get(d) or {}).get("pdf_sha256", "")
             for r in rules:
                 r["_doc_id"] = d
                 if not str(r.get("id", "")).startswith(d + ":"):
                     r["id"] = f"{d}:{r.get('id')}"
+                # Bind the citation to the exact file the reviewer will be shown
+                # (TICKETS.md A1): if the PDF later changes, the mismatch is detectable.
+                if doc_sha:
+                    cit = r.get("citation") or {}
+                    cit["doc_sha256"] = doc_sha
+                    r["citation"] = cit
             drafted.extend(rules)
             needs.extend(getattr(llm.draft_rules, "last_needs_data", []) or [])
     for call in trail:

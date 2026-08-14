@@ -1,20 +1,35 @@
 """Ingestion: PDF -> clauses (+ bounding boxes) -> catalog entry (PRD 5.1).
 
-Real path uses docling to parse the PDF and read layout provenance (page + bbox).
-Because docling is heavy (torch + model download), ingestion falls back to a
-committed sidecar `<pdf>.clauses.json` — produced by scripts/make_reference_pdfs.py
-with exact bboxes — so the app runs offline. Either way we then tag + summarize the
-document (llm.tag_document) and write a catalog entry.
+Real path uses docling to parse the PDF (OCR on, explicitly — see _converter) and read
+layout provenance (page + bbox). Because docling is heavy (torch + model download),
+ingestion can fall back to an OPTIONAL sidecar `<pdf>.clauses.json` — a generated
+artifact, not committed to the repo — but only when the sidecar embeds the SHA-256 of
+the exact PDF it was extracted from; an unbound sidecar is untrusted provenance and is
+ignored. Either way we then tag + summarize the document (llm.tag_document) and write a
+catalog entry carrying the source PDF's own SHA-256, which is what later lets the app
+detect a swapped or edited source file.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import os
 import re
 from typing import Any
 
 from . import llm
 from .catalog import Catalog
+
+log = logging.getLogger("kenny.ingest")
+
+
+def sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
 
 
 def _sidecar_path(pdf_path: str) -> str:
@@ -41,14 +56,13 @@ def parse_pdf(pdf_path: str, doc_id: str) -> tuple[list[dict], str, str]:
     text from this PDF", and each one swallowed a nonexistent path into the same "empty"
     result — so ingesting a case.yaml that declares a document nobody has uploaded yet
     produced a catalogued document with zero clauses, indistinguishable from a scan. The
-    library then lists a contract Holly cannot answer from and never says why. Missing is
+    library then lists a contract Kenny cannot answer from and never says why. Missing is
     a hard error: it is fixed by supplying the file, not by degrading the extraction.
     """
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(
             f"{doc_id}: no PDF at {pdf_path}. It is declared in case.yaml but not on "
-            f"disk — upload it, or run scripts/make_citywide_corpus.py to rebuild the "
-            f"reference corpus."
+            f"disk — upload it via Admin → Upload, or place the file and re-ingest."
         )
 
     clauses = _parse_with_docling(pdf_path, doc_id)
@@ -56,10 +70,8 @@ def parse_pdf(pdf_path: str, doc_id: str) -> tuple[list[dict], str, str]:
         text = "\n".join(c.get("text", "") for c in clauses)
         return clauses, text, "docling"
 
-    sidecar = _sidecar_path(pdf_path)
-    if os.path.exists(sidecar):
-        with open(sidecar) as f:
-            data = json.load(f)
+    data = _load_sidecar(pdf_path)
+    if data is not None:
         clauses = data.get("clauses", [])
         text = data.get("text") or "\n".join(c.get("text", "") for c in clauses)
         return clauses, text, "sidecar"
@@ -69,6 +81,36 @@ def parse_pdf(pdf_path: str, doc_id: str) -> tuple[list[dict], str, str]:
         text = "\n".join(c.get("text", "") for c in clauses)
         return clauses, text, "raw-text-fallback"
     return [], "", "empty"
+
+
+def _load_sidecar(pdf_path: str) -> dict | None:
+    """Load `<pdf>.clauses.json` ONLY if it is bound to this exact PDF.
+
+    A sidecar is provenance from outside the repo's own parse, so it must carry
+    `pdf_sha256` matching the file on disk. Without that binding a stale or hand-edited
+    sidecar silently becomes the document's official clause map — worse than degrading
+    to the raw-text tier, because it *looks* exact.
+    """
+    sidecar = _sidecar_path(pdf_path)
+    if not os.path.exists(sidecar):
+        return None
+    try:
+        with open(sidecar) as f:
+            data = json.load(f)
+    except Exception:
+        log.exception("unreadable sidecar %s — ignoring", sidecar)
+        return None
+    bound = data.get("pdf_sha256", "")
+    actual = sha256_file(pdf_path)
+    if bound != actual:
+        log.warning("sidecar %s is not bound to %s (embedded sha %s, file sha %s) — "
+                    "ignoring it", sidecar, pdf_path, bound[:12] or "<missing>",
+                    actual[:12])
+        return None
+    if not isinstance(data.get("clauses"), list):
+        log.warning("sidecar %s has no 'clauses' list — ignoring it", sidecar)
+        return None
+    return data
 
 
 def _parse_with_text(pdf_path: str) -> list[dict]:
@@ -93,34 +135,68 @@ def _parse_with_text(pdf_path: str) -> list[dict]:
                         "kind": "page-text"})
         return out
     except Exception:
+        log.exception("raw-text extraction failed for %s", pdf_path)
         return []
+
+
+def _converter():
+    """DocumentConverter with the pipeline configured EXPLICITLY (never defaults):
+    OCR on — a true scan gets its text layer here, in-band, not by an undocumented
+    preprocessing step — and table structure on. Pinning the options (and the docling
+    version, in requirements.txt) means an upgrade cannot silently change what
+    ingestion extracts. Falls back to a default converter if this docling version
+    lays its options out differently, and says so."""
+    from docling.document_converter import DocumentConverter
+    try:
+        from docling.datamodel.base_models import InputFormat
+        from docling.datamodel.pipeline_options import PdfPipelineOptions
+        from docling.document_converter import PdfFormatOption
+        opts = PdfPipelineOptions()
+        opts.do_ocr = True
+        opts.do_table_structure = True
+        return DocumentConverter(
+            format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=opts)})
+    except Exception:
+        log.warning("could not pin docling pipeline options; using defaults",
+                    exc_info=True)
+        return DocumentConverter()
 
 
 def _parse_with_docling(pdf_path: str, doc_id: str):
     """Best-effort docling parse -> clauses with page + bbox. Returns None if docling
-    is unavailable or errors, so callers fall back."""
+    is unavailable or errors, so callers fall back — but an ERROR (crash on a corrupt
+    PDF, OOM) is logged with its traceback, so it is distinguishable from docling
+    simply not being installed."""
     try:
-        from docling.document_converter import DocumentConverter
+        from docling.document_converter import DocumentConverter  # noqa: F401
     except Exception:
+        log.debug("docling not installed; falling back for %s", doc_id)
         return None
     try:
-        conv = DocumentConverter()
+        conv = _converter()
         result = conv.convert(pdf_path)
         doc = result.document
+        heights = _page_heights(doc)
         clauses: list[dict] = []
         caption = ""
         for item, _level in doc.iterate_items():
-            page, bbox = _provenance(item)
+            page, bbox = _provenance(item, heights)
 
             # TABLES. docling returns tables as their own item type with no `.text`, so
             # a text-only reader drops them silently — and MOUs put their money in
             # tables (salary schedules, holiday lists, accrual charts). Flatten each
             # row into a searchable line that carries its headers, so "Sergeant Step C"
-            # is retrievable.
+            # is retrievable. Each row gets its OWN bbox from docling's cell geometry
+            # when available, so citing a salary row highlights that row, not the
+            # whole table; rows whose cells carry no geometry fall back to the table's.
             if hasattr(item, "export_to_dataframe"):
-                for row_text in _table_rows(item, caption):
+                row_boxes = _table_row_bboxes(item, heights.get(page))
+                for ri, row_text in enumerate(_table_rows(item, caption)):
+                    # ri == 0 is the synthetic whole-table line; data rows are 1-based
+                    rb = row_boxes.get(ri - 1) if ri > 0 else None
                     clauses.append({"clause": "", "text": row_text, "page": page,
-                                    "bbox": bbox, "char_span": [0, len(row_text)],
+                                    "bbox": rb or bbox,
+                                    "char_span": [0, len(row_text)],
                                     "kind": "table-row"})
                 continue
 
@@ -142,12 +218,13 @@ def _parse_with_docling(pdf_path: str, doc_id: str):
                 # case.yaml can drift from what the contract's own cover page says.
                 "label": label,
             })
-        return clauses or _from_doc_texts(doc)
+        return clauses or _from_doc_texts(doc, heights)
     except Exception:
+        log.exception("docling parse failed for %s (%s)", doc_id, pdf_path)
         return None
 
 
-def _from_doc_texts(doc) -> list[dict] | None:
+def _from_doc_texts(doc, page_heights: dict[int, float] | None = None) -> list[dict] | None:
     """Recover a page docling's layout model wrote off as a Picture.
 
     `iterate_items()` walks the body tree. When the layout model classifies a whole page
@@ -171,7 +248,7 @@ def _from_doc_texts(doc) -> list[dict] | None:
         text = (getattr(t, "text", "") or "").strip()
         if not text:
             continue
-        page, bbox = _provenance(t)
+        page, bbox = _provenance(t, page_heights)
         spans.append({"text": text, "page": page, "bbox": bbox})
     if not spans:
         return None
@@ -245,22 +322,101 @@ def _table_rows(item, caption: str = "") -> list[str]:
     return out
 
 
-def _provenance(item: Any) -> tuple[int, list[float]]:
+def _page_heights(doc) -> dict[int, float]:
+    """Page number -> height in points, needed to normalize a TOPLEFT-origin bbox."""
+    out: dict[int, float] = {}
+    try:
+        for no, page in (getattr(doc, "pages", None) or {}).items():
+            h = getattr(getattr(page, "size", None), "height", None)
+            if h:
+                out[int(no)] = float(h)
+    except Exception:
+        pass
+    return out
+
+
+def _normalize_bbox(bb, page_height: float | None) -> list[float]:
+    """Read a docling BoundingBox into this codebase's convention: bottom-left origin,
+    [l, t, r, b] with t measured from the bottom of the page.
+
+    docling declares each box's own `coord_origin`; the renderer (pdfview) hard-assumes
+    bottom-left. ASSERTING the origin here — instead of assuming it — is what stops a
+    docling upgrade that emits TOPLEFT boxes from silently mirroring every highlight."""
+    l = float(getattr(bb, "l", 0))
+    t = float(getattr(bb, "t", 0))
+    r = float(getattr(bb, "r", 0))
+    b = float(getattr(bb, "b", 0))
+    origin = str(getattr(bb, "coord_origin", "") or "").upper()
+    if "TOP" in origin:
+        if not page_height:
+            log.warning("TOPLEFT bbox with unknown page height — highlight may be "
+                        "mirrored")
+            return [l, t, r, b]
+        t, b = page_height - t, page_height - b
+    return [l, t, r, b]
+
+
+def _provenance(item: Any, page_heights: dict[int, float] | None = None
+                ) -> tuple[int, list[float]]:
     prov = getattr(item, "prov", None) or []
     if prov:
         p = prov[0]
         page = getattr(p, "page_no", 1)
         bb = getattr(p, "bbox", None)
         if bb is not None:
-            return page, [getattr(bb, "l", 0), getattr(bb, "t", 0),
-                          getattr(bb, "r", 0), getattr(bb, "b", 0)]
+            return page, _normalize_bbox(bb, (page_heights or {}).get(page))
     return 1, []
 
 
+def _table_row_bboxes(item, page_height: float | None) -> dict[int, list[float]]:
+    """Best-effort per-row bbox from docling's own cell geometry.
+
+    Returns {dataframe_row_index: bbox}. The dataframe's rows are the table's BODY rows
+    in order, so header rows (docling flags them column_header) are excluded from the
+    mapping. Rows whose cells carry no geometry are simply absent — the caller falls
+    back to the whole-table bbox for those."""
+    try:
+        cells = list(item.data.table_cells)
+    except Exception:
+        return {}
+    header_rows: set[int] = set()
+    boxes_by_row: dict[int, list[list[float]]] = {}
+    for cell in cells:
+        r = getattr(cell, "start_row_offset_idx", None)
+        if r is None:
+            continue
+        if getattr(cell, "column_header", False):
+            header_rows.add(int(r))
+            continue
+        bb = getattr(cell, "bbox", None)
+        if bb is None:
+            continue
+        boxes_by_row.setdefault(int(r), []).append(_normalize_bbox(bb, page_height))
+    body = sorted(r for r in boxes_by_row if r not in header_rows)
+    return {i: _union_bbox(boxes_by_row[r]) for i, r in enumerate(body)
+            if boxes_by_row[r]}
+
+
+# A section number, not a dollar figure (TICKETS.md F2). Anchored to a token boundary:
+# never mid-number ("1660.80"), never right after "$" ("$53.00" in a salary row —
+# which previously became clause "53.00" and could bind a citation to the wrong text).
+_CLAUSE_RE = re.compile(
+    r"(?:^|(?<=[\s(]))"          # token start: beginning, whitespace, or open paren
+    r"(?:§\s*)?"
+    r"(\d{1,2}\.\d{1,2})"
+    r"(?!\d)"
+    r"(?=$|[\s:).,\-–—|])"       # token end
+)
+
+
 def _clause_number(text: str) -> str:
-    import re
-    m = re.search(r"\b(\d+\.\d+)\b", text[:40])
-    return m.group(1) if m else ""
+    head = (text or "")[:40]
+    for m in _CLAUSE_RE.finditer(head):
+        pre = head[:m.start()]
+        if pre.rstrip().endswith("$") or (pre and pre.rstrip()[-1:].isdigit()):
+            continue  # "$53.00" / "Step 2 53.00" are figures, not sections
+        return m.group(1)
+    return ""
 
 
 def chunk_clauses(clauses: list[dict], max_chars: int = 1000, overlap: int = 120) -> list[dict]:
@@ -381,6 +537,10 @@ def ingest_document(pdf_path: str, doc_id: str, title: str, taxonomy: dict,
         # name the case declares for it — a signal the wrong file was filed, not noise.
         "declared_title": title,
         "file": pdf_path,
+        # Binds every downstream citation to the exact bytes that were parsed. Serving
+        # and answering verify against this, so a swapped or edited source PDF is
+        # DETECTED rather than silently rendered under old citations (TICKETS.md A1).
+        "pdf_sha256": sha256_file(pdf_path),
         "department": meta.get("department", ""),
         "tags": meta.get("tags", []),
         "proposed_tags": meta.get("proposed_tags", []),
@@ -390,12 +550,15 @@ def ingest_document(pdf_path: str, doc_id: str, title: str, taxonomy: dict,
         "parse_source": source,
         "tag_source": meta.get("source", "stub"),
     }
-    catalog.upsert(entry)
     # Index chunks for scalable retrieval (large PDFs). Optional — the catalog still
-    # works without it; the index just makes within-doc search rank properly.
+    # works without it; the index just makes within-doc search rank properly. A failure
+    # is RECORDED on the entry (a doc catalogued but absent from search is silently
+    # unanswerable) and surfaced by the admin ingest warnings.
     if backend is not None:
         try:
             backend.index(doc_id, chunk_clauses(clauses))
-        except Exception:
-            pass
+        except Exception as e:
+            log.exception("indexing failed for %s", doc_id)
+            entry["index_error"] = f"{type(e).__name__}: {e}"
+    catalog.upsert(entry)
     return entry

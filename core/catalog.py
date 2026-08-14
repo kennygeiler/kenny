@@ -24,13 +24,27 @@ class Catalog:
             self._docs = {d["doc_id"]: d for d in data.get("documents", [])}
 
     def save(self) -> None:
+        """Atomic write: temp file + rename. The catalog is hundreds of KB and a crash
+        mid-write must leave the previous version, not a truncated JSON file."""
         os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
-        with open(self.path, "w") as f:
+        tmp = self.path + ".tmp"
+        with open(tmp, "w") as f:
             json.dump({"documents": list(self._docs.values())}, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, self.path)
 
     def upsert(self, entry: dict) -> None:
         self._docs[entry["doc_id"]] = entry
         self.save()
+
+    def remove(self, doc_id: str) -> bool:
+        """Drop a document from the catalog (reconciliation: a doc removed from
+        case.yaml must not linger in the catalog forever). Returns whether it existed."""
+        existed = self._docs.pop(doc_id, None) is not None
+        if existed:
+            self.save()
+        return existed
 
     def get(self, doc_id: str) -> dict | None:
         return self._docs.get(doc_id)
