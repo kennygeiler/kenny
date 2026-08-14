@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kenny Admin — contract library, rule review and audit</title>
-  <link rel="stylesheet" href="/static/styles.css?v=4">
+  <link rel="stylesheet" href="/static/styles.css?v=5">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -124,6 +124,32 @@
     <div class="db" id="drawerBody"></div>
   </div>
 
+  <!-- Document X-ray (OCR_TICKETS.md OCR-1): the rendered page with every extracted
+       clause boxed, colour-coded by kind. Proof the machine read the document. -->
+  <div id="xray" role="dialog" aria-modal="true" aria-labelledby="xrayTitle" hidden>
+    <div class="xpanel">
+      <div class="xh">
+        <strong id="xrayTitle">Document X-ray</strong>
+        <span class="xnav">
+          <button type="button" class="ghost" id="xrayPrev" onclick="xrayStep(-1)">&#8592; Prev</button>
+          <span class="xpage" id="xrayPageNo" aria-live="polite"></span>
+          <button type="button" class="ghost" id="xrayNext" onclick="xrayStep(1)">Next &#8594;</button>
+        </span>
+        <button type="button" class="ghost" id="xrayClose" onclick="closeXray()">Close</button>
+      </div>
+      <div class="xb">
+        <p class="xcounts" id="xrayCounts" role="status"></p>
+        <ul class="xlegend" aria-label="What the box colours mean">
+          <li><i class="xk-text"></i>text</li>
+          <li><i class="xk-table"></i>table row</li>
+          <li><i class="xk-recovered"></i>recovered layout</li>
+          <li><i class="xk-page"></i>page-level</li>
+        </ul>
+        <div class="xstage" id="xrayStage"></div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const $ = id => document.getElementById(id);
     const esc = s => (s ?? '').toString().replace(/[&<>"]/g, m =>
@@ -206,7 +232,10 @@
       return `<article class="card">
         <h4><a href="/doc/${encodeURIComponent(d.doc_id)}/file" target="_blank"
                rel="noopener">${esc(d.title || d.doc_id)}<span class="ext" aria-hidden="true"> &#8599;</span><span class="sr-only"> (opens the PDF in a new tab)</span></a></h4>
-        <p class="mono id">${esc(d.doc_id)} · ${tot} clauses</p>
+        <p class="mono id">${esc(d.doc_id)} · ${tot} clauses
+          <button type="button" class="ghost small" onclick="openXray('${esc(d.doc_id)}')"
+                  title="See every clause the machine extracted, boxed on the page it came from">
+            X-ray</button></p>
         ${d.declared_title && d.declared_title !== d.title
           ? `<p class="muted">Filed in this case as “${esc(d.declared_title)}”.</p>` : ''}
         <p class="chips">${chips}</p>
@@ -558,8 +587,93 @@
       if (LAST_FOCUS) LAST_FOCUS.focus();
     }
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && !$('drawer').hidden) closeDrawer();
+      if (e.key !== 'Escape') return;
+      if (!$('xray').hidden) closeXray();
+      else if (!$('drawer').hidden) closeDrawer();
     });
+
+    /* ---------------- document X-ray (OCR_TICKETS.md OCR-1) ---------------- */
+    // Boxes are positioned in % of the page so they stay glued to their clauses at any
+    // rendered width. Catalog bboxes are bottom-left origin ([l,t,r,b], t measured from
+    // the page BOTTOM) — the same flip core/pdfview.py does, here in percentages.
+    let XRAY_DOC = null, XRAY_PAGE = 1, XRAY_PAGES = 1, XRAY_FOCUS = null;
+
+    const xrayKind = k => k === 'table-row' ? 'xk-table'
+      : (k === 'recovered-row' || k === 'recovered-text') ? 'xk-recovered'
+      : k === 'page-text' ? 'xk-page' : 'xk-text';
+
+    function xrayCounts(clauses) {
+      const n = {text: 0, table: 0, recovered: 0, page: 0};
+      clauses.forEach(c => n[{ 'xk-table': 'table', 'xk-recovered': 'recovered',
+                               'xk-page': 'page' }[xrayKind(c.kind)] || 'text']++);
+      const parts = [];
+      if (n.text) parts.push(`${n.text} text`);
+      if (n.table) parts.push(`${n.table} table row${n.table === 1 ? '' : 's'}`);
+      if (n.recovered) parts.push(`${n.recovered} recovered`);
+      if (n.page) parts.push(`${n.page} page-level`);
+      return `${clauses.length} clause${clauses.length === 1 ? '' : 's'}`
+        + (parts.length ? ` (${parts.join(', ')})` : '');
+    }
+
+    function openXray(docId) {
+      XRAY_FOCUS = document.activeElement;
+      XRAY_DOC = docId; XRAY_PAGE = 1;
+      $('xrayTitle').textContent = `X-ray — ${docTitle(docId)}`;
+      $('xray').hidden = false;
+      $('xrayClose').focus();
+      loadXray();
+    }
+    function closeXray() {
+      $('xray').hidden = true;
+      $('xrayStage').innerHTML = '';
+      if (XRAY_FOCUS) XRAY_FOCUS.focus();
+    }
+    $('xray').addEventListener('click', e => { if (e.target === $('xray')) closeXray(); });
+    function xrayStep(d) {
+      XRAY_PAGE = Math.min(Math.max(1, XRAY_PAGE + d), XRAY_PAGES);
+      loadXray();
+    }
+
+    async function loadXray() {
+      const stage = $('xrayStage');
+      stage.innerHTML = `<p class="muted">Reading page ${XRAY_PAGE}&hellip;</p>`;
+      let res;
+      try {
+        const resp = await fetch(`/doc/${encodeURIComponent(XRAY_DOC)}/clauses?page=${XRAY_PAGE}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        res = await resp.json();
+      } catch (e) {
+        stage.innerHTML = `<p class="flagline">Could not load the extraction for this page: ${esc(String(e))}</p>`;
+        return;
+      }
+      XRAY_PAGE = res.page; XRAY_PAGES = res.page_count || 1;
+      $('xrayPageNo').textContent = `page ${XRAY_PAGE} of ${XRAY_PAGES}`;
+      $('xrayPrev').disabled = XRAY_PAGE <= 1;
+      $('xrayNext').disabled = XRAY_PAGE >= XRAY_PAGES;
+      $('xrayCounts').textContent = xrayCounts(res.clauses);
+      const W = res.width, H = res.height;
+      // Clauses sharing an identical bbox (docling gives every row of some tables the
+      // whole-table box) are merged into ONE div: stacked translucent fills compose to
+      // an opaque blob that hides the page, and only the topmost would be hoverable.
+      const groups = new Map();
+      res.clauses.forEach(c => {
+        if (!c.bbox || c.bbox.length !== 4) return;
+        const k = c.bbox.join(',');
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(c);
+      });
+      const boxes = [...groups.values()].map(g => {
+        const c = g[0], [l, t, r, b] = c.bbox;
+        // t is the TOP edge's distance from the page bottom, hence (H - t) from the top.
+        const tip = (g.length > 1 ? `${g.length} clauses share this box · ` : '')
+          + (c.clause ? `§${c.clause} — ` : '') + (c.text || '').slice(0, 200);
+        return `<div class="xbox ${xrayKind(c.kind)}" tabindex="0"
+          style="left:${(l / W * 100).toFixed(3)}%;top:${((H - t) / H * 100).toFixed(3)}%;width:${((r - l) / W * 100).toFixed(3)}%;height:${((t - b) / H * 100).toFixed(3)}%">
+          <span class="xtip">${esc(tip)}</span></div>`;
+      }).join('');
+      stage.innerHTML = `<img src="/doc/${encodeURIComponent(XRAY_DOC)}/page/${XRAY_PAGE}"
+        alt="Page ${XRAY_PAGE} of ${esc(XRAY_DOC)}, with every extracted clause boxed">` + boxes;
+    }
 
     /* ---------------- audit ---------------- */
     async function loadLedger() {

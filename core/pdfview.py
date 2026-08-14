@@ -49,6 +49,29 @@ def render_page_with_bbox(pdf_path: str, page: int, bbox: list[float],
     return png
 
 
+def page_dims(pdf_path: str, page: int) -> tuple[int, int, float, float] | None:
+    """(page, page_count, width, height) for a 1-based page, clamped into range;
+    width/height in PDF points. The X-ray overlay needs these to scale catalog bboxes
+    onto the rendered image client-side. Same lock as rendering — pypdfium2 is not
+    thread-safe (see above)."""
+    if not os.path.exists(pdf_path):
+        return None
+    try:
+        import pypdfium2 as pdfium
+    except Exception:
+        return None
+    with _RENDER_LOCK:
+        try:
+            pdf = pdfium.PdfDocument(pdf_path)
+            count = len(pdf)
+            idx = min(max(0, (page or 1) - 1), count - 1)
+            width, height = pdf[idx].get_size()
+            pdf.close()  # don't leak the handle; pdfium warns and holds the file open
+            return idx + 1, count, width, height
+        except Exception:
+            return None
+
+
 def _render(pdfium, ImageDraw, pdf_path, page, bbox, scale) -> bytes | None:
     try:
         pdf = pdfium.PdfDocument(pdf_path)

@@ -22,7 +22,7 @@ from . import audit, auth, governance, index, ingest, llm
 from .caseio import default_case_dir, load_case
 from .catalog import Catalog
 from .engine import NoRuleApplies, calculate
-from .pdfview import render_page_with_bbox
+from .pdfview import page_dims, render_page_with_bbox
 from .retriever import CatalogLLMRetriever
 from .ruledsl import SHIFT_BASES, Rule, load_rules, validate_rules
 
@@ -784,6 +784,32 @@ def doc_page(doc_id: str, page: int, bbox: str = ""):
     if png is None:
         return JSONResponse({"error": "render unavailable"}, status_code=503)
     return Response(content=png, media_type="image/png")
+
+
+@app.get("/doc/{doc_id}/clauses")
+def doc_clauses(doc_id: str, page: int = 1):
+    """Every clause extracted from one page, plus the page's dimensions in PDF points
+    (OCR_TICKETS.md OCR-1). The X-ray overlay draws each bbox over the rendered page
+    image; without width/height the client cannot scale point-space boxes onto the
+    image, whose pixel size depends on the render scale.
+
+    `kind` is normalised here — the catalog omits it for normal text, but the overlay
+    colour-codes by kind and an absent key would make every consumer re-implement the
+    default.
+    """
+    case = _case()
+    pdf_path = _resolve_pdf(case, doc_id)
+    if not pdf_path:
+        return JSONResponse({"error": "unknown doc"}, status_code=404)
+    dims = page_dims(pdf_path, page)
+    if dims is None:
+        return JSONResponse({"error": "page metrics unavailable"}, status_code=503)
+    page, page_count, width, height = dims
+    clauses = [{"clause": c.get("clause", ""), "kind": c.get("kind") or "text",
+                "page": page, "bbox": c.get("bbox", []), "text": c.get("text", "")}
+               for c in _catalog(case).clauses(doc_id) if c.get("page") == page]
+    return {"doc_id": doc_id, "page": page, "page_count": page_count,
+            "width": width, "height": height, "clauses": clauses}
 
 
 # --------------------------------------------------------------------------- #
